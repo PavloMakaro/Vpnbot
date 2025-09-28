@@ -1,0 +1,42 @@
+#!/bin/bash
+echo "Установка Telegram бота для VPN..."
+
+# Обновление системы и установка зависимостей
+apt update && apt install -y python3-pip git nginx certbot python3-certbot-nginx
+
+# Установка 3X-UI
+bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
+
+# Клонирование репозитория
+git clone https://github.com/PavloMakaro/Gashih /root/vpn-bot
+cd /root/vpn-bot
+
+# Установка Python зависимостей
+pip3 install -r requirements.txt
+
+# Запуск бота
+chmod +x bot.py
+nohup python3 bot.py &
+
+# Настройка SSL и Nginx
+certbot --nginx -d Vpn.play2go.cloud --non-interactive --agree-tos --email your_email@example.com
+cat > /etc/nginx/sites-available/vpn << EOL
+server {
+    listen 443 ssl;
+    server_name Vpn.play2go.cloud;
+    ssl_certificate /etc/letsencrypt/live/Vpn.play2go.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/Vpn.play2go.cloud/privkey.pem;
+    location /webhook {
+        proxy_pass http://localhost:8443;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+}
+EOL
+ln -s /etc/nginx/sites-available/vpn /etc/nginx/sites-enabled/
+nginx -t && systemctl restart nginx
+
+# Настройка автозапуска
+(crontab -l 2>/dev/null; echo "@reboot nohup python3 /root/vpn-bot/bot.py &") | crontab -
+
+echo "Your virtual machine “Vpn” on the server vm.play2go.cloud has been successfully reinstalled."
