@@ -3,8 +3,8 @@
 # --- КОНФИГУРАЦИЯ ---
 # Базовая ссылка на репозиторий для скачивания файлов
 REPO_BASE_URL="https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main"
-# Имя файла, под которым бот будет работать (должно соответствовать имени на GitHub)
-BOT_FILE="vpnbot.py"
+# !!! ИСПРАВЛЕНО: Имя файла должно быть ai_studio_code.py, как в репозитории !!!
+BOT_FILE="ai_studio_code.py" 
 # Директория для установки
 INSTALL_DIR="/root/vpnbot_data"
 # Имя сессии screen
@@ -16,17 +16,16 @@ echo "=================================================="
 
 # 1. Проверка системных пакетов и установка
 echo "Обновление списка пакетов и установка git, screen, wget, python3-full..."
-# Устанавливаем wget, если его нет, чтобы можно было скачать файлы
 sudo apt update
 sudo apt install -y python3-full python3-venv git screen wget
 
 # 2. Создание директории и переход в нее
 if [ -d "$INSTALL_DIR" ]; then
-    echo "⚠️ Директория $INSTALL_DIR уже существует. Используем ее."
-else
-    echo "Создание директории $INSTALL_DIR..."
-    mkdir -p "$INSTALL_DIR"
+    echo "⚠️ Директория $INSTALL_DIR уже существует. Удаляем ее для чистой установки..."
+    rm -rf "$INSTALL_DIR"
 fi
+echo "Создание директории $INSTALL_DIR..."
+mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR" || { echo "❌ Ошибка: Не удалось перейти в директорию $INSTALL_DIR. Выход."; exit 1; }
 
 # 3. Загрузка файла бота
