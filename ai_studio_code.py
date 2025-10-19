@@ -1,641 +1,668 @@
 import telebot
 from telebot import types
-import logging
 import json
 import time
-import os
+import datetime
+import threading
 
 # --- КОНСТАНТЫ ---
-# НОВЫЙ ТОКЕН
-BOT_TOKEN = "8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8" 
-# ID администратора (ваш ID)
-ADMIN_ID = 8320218178 
-# Ваш ник для поддержки
-SUPPORT_USERNAME = "@Gl1ch555"
-# Номер карты для оплаты (Ozon Bank Makarov Pavel Alexandrovich)
-CARD_NUMBER = "2204320690808227"
-# Название банка и ФИО получателя
-CARD_HOLDER_INFO = "Ozon Bank, Макаров Павел Александрович"
-# Название сервера
-VPN_SERVER_NAME = "X-Ray Server (Германия)"
-# Файл для хранения данных (пользователи, конфиги)
-DB_FILE = "db.json"
-# Базовые цены и сроки (в секундах)
-PRICES = {
-    "1_month": {"price": 50, "days": 30, "duration": 30 * 24 * 3600},
-    "2_months": {"price": 90, "days": 60, "duration": 60 * 24 * 3600},
-    "3_months": {"price": 120, "days": 90, "duration": 90 * 24 * 3600},
-}
-# Награда за реферала
-REFERRAL_BONUS_AMOUNT = 25  # рубли
-REFERRAL_BONUS_DAYS = 7  # дни подписки
+TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
+ADMIN_USERNAME = '@Gl1ch555'
+ADMIN_ID = 8320218178 # Ваш ID, который вы предоставили
+CARD_NUMBER = '2204320690808227'
+CARD_HOLDER = 'Makarov Pavel Alexandrovich (Ozon Bank)'
 
-# --- ИНИЦИАЛИЗАЦИЯ ---
-logging.basicConfig(level=logging.INFO)
-bot = telebot.TeleBot(BOT_TOKEN)
+PRICE_MONTH = 50
+PRICE_2_MONTHS = 90 # Со скидкой
+PRICE_3_MONTHS = 120 # Со скидкой
 
-# --- УТИЛИТЫ ДЛЯ РАБОТЫ С DB ---
-def load_db():
-    """Загрузка данных из JSON файла"""
+REFERRAL_BONUS_RUB = 25
+REFERRAL_BONUS_DAYS = 7 # Дней подписки за реферала
+
+# --- ИНИЦИАЛИЗАЦИЯ БОТА ---
+bot = telebot.TeleBot(TOKEN)
+
+# --- БАЗЫ ДАННЫХ (ПРОСТОЙ JSON) ---
+# Для реального проекта рекомендуется использовать СУБД (PostgreSQL, SQLite)
+def load_data(filename):
     try:
-        if os.path.exists(DB_FILE):
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {"users": {}, "configs": {}, "pending_payments": {}}
-    except json.JSONDecodeError:
-        logging.error("Ошибка декодирования JSON в файле DB. Создан пустой шаблон.")
-        return {"users": {}, "configs": {}, "pending_payments": {}}
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
-def save_db(data):
-    """Сохранение данных в JSON файл"""
-    with open(DB_FILE, 'w', encoding='utf-8') as f:
+def save_data(filename, data):
+    with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-def get_user(user_id):
-    """Получение данных пользователя, или создание нового, если не найден"""
-    db = load_db()
-    user_id_str = str(user_id)
-    if user_id_str not in db["users"]:
-        db["users"][user_id_str] = {
-            "subscription_end": 0,
-            "referral_code": user_id_str,
-            "referred_by": None,
-            "balance": 0,
-            "referrals_count": 0,
-            "last_config_type": None, 
-            "username": None
-        }
-        if user_id == ADMIN_ID:
-             db["users"][user_id_str]["username"] = SUPPORT_USERNAME.strip('@')
-        save_db(db)
-    return db["users"][user_id_str]
+users_db = load_data('users.json')
+configs_db = load_data('configs.json')
+payments_db = load_data('payments.json')
 
-def update_user(user_id, **kwargs):
-    """Обновление данных пользователя"""
-    db = load_db()
-    user_id_str = str(user_id)
-    if user_id_str not in db["users"]:
-        get_user(user_id)
-    db["users"][user_id_str].update(kwargs)
-    save_db(db)
+# --- МОДЕЛИ ДАННЫХ ---
+# users_db: { user_id: { 'balance': 0, 'subscription_end': None, 'referred_by': None, 'username': '...', 'first_name': '...', 'referrals_count': 0 } }
+# configs_db: { '1_month': [ { 'name': 'Germany 1', 'image': 'url_to_image', 'code': 'config_code', 'link': 'link_to_config' }, ... ], '2_months': [], '3_months': [] }
+# payments_db: { payment_id: { 'user_id': ..., 'amount': ..., 'status': 'pending/confirmed/rejected', 'screenshot_id': ..., 'timestamp': ..., 'period': ... } }
 
-def check_subscription(user_id):
-    """Проверка активности подписки (True/False)"""
-    user = get_user(user_id)
-    return user["subscription_end"] > time.time()
+# --- ГЕНЕРАТОР УНИКАЛЬНОГО ID ДЛЯ ПЛАТЕЖЕЙ ---
+def generate_payment_id():
+    return str(int(time.time() * 100000))
 
-def add_subscription(user_id, duration_seconds):
-    """Продление или активация подписки"""
-    user = get_user(user_id)
-    current_end = user["subscription_end"]
-    
-    start_time = max(time.time(), current_end)
-    new_end = start_time + duration_seconds
-    
-    update_user(user_id, subscription_end=new_end)
-    return new_end
+# --- ФУНКЦИИ АДМИНКИ ---
+def admin_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Управление конфигами", callback_data="admin_manage_configs"),
+        types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
+        types.InlineKeyboardButton("Список пользователей", callback_data="admin_users_list"),
+        types.InlineKeyboardButton("Изменить баланс/подписку", callback_data="admin_edit_user"),
+        types.InlineKeyboardButton("Рассылка", callback_data="admin_broadcast"),
+        types.InlineKeyboardButton("Назад в меню", callback_data="main_menu")
+    )
+    return markup
 
-# --- КЛАВИАТУРЫ ---
-def get_main_keyboard():
-    """Основная клавиатура (Reply)"""
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row("🚀 Купить VPN", "👤 Личный кабинет")
-    keyboard.row("❓ Поддержка", "🎁 Реферальная система")
-    return keyboard
+def manage_configs_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("Добавить конфиг", callback_data="admin_add_config"),
+        types.InlineKeyboardButton("Удалить конфиг", callback_data="admin_delete_config"),
+        types.InlineKeyboardButton("Показать конфиги", callback_data="admin_show_configs"),
+        types.InlineKeyboardButton("Назад в админку", callback_data="admin_panel")
+    )
+    return markup
 
-def get_admin_main_keyboard():
-    """Основная админ-клавиатура (Reply)"""
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row("✅ Неподтвержденные платежи")
-    keyboard.row("🛠️ Управление конфигами")
-    keyboard.row("🔙 Выйти из админки")
-    return keyboard
+def confirm_payments_keyboard(payment_id):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Подтвердить", callback_data=f"admin_confirm_{payment_id}"),
+        types.InlineKeyboardButton("Отклонить", callback_data=f"admin_reject_{payment_id}")
+    )
+    return markup
 
-def get_buy_options_keyboard():
-    """Клавиатура с тарифами (Inline)"""
-    keyboard = types.InlineKeyboardMarkup(row_width=1)
-    for key, data in PRICES.items():
-        text = f"{data['days']} дней - {data['price']} ₽"
-        keyboard.add(types.InlineKeyboardButton(text, callback_data=f"buy_{key}"))
-    keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
-    return keyboard
+# --- ФУНКЦИИ ПОЛЬЗОВАТЕЛЯ ---
+def main_menu_keyboard(user_id):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Купить VPN 🚀", callback_data="buy_vpn"),
+        types.InlineKeyboardButton("Личный кабинет 👤", callback_data="my_account"),
+        types.InlineKeyboardButton("Поддержка 👨‍💻", callback_data="support"),
+        types.InlineKeyboardButton("Реферальная система 🤝", callback_data="referral_system")
+    )
+    if str(user_id) == str(ADMIN_ID):
+        markup.add(types.InlineKeyboardButton("Админ-панель 🛠️", callback_data="admin_panel"))
+    return markup
 
-def get_profile_keyboard(user_id):
-    """Клавиатура личного кабинета (Inline)"""
-    keyboard = types.InlineKeyboardMarkup(row_width=1)
-    if check_subscription(user_id):
-        keyboard.add(types.InlineKeyboardButton("🔑 Запросить конфиг", callback_data="get_config"))
-    keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
-    return keyboard
+def buy_vpn_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(f"1 месяц ({PRICE_MONTH} ₽)", callback_data="choose_period_1_month"),
+        types.InlineKeyboardButton(f"2 месяца ({PRICE_2_MONTHS} ₽)", callback_data="choose_period_2_months"),
+        types.InlineKeyboardButton(f"3 месяца ({PRICE_3_MONTHS} ₽)", callback_data="choose_period_3_months"),
+        types.InlineKeyboardButton("Назад", callback_data="main_menu")
+    )
+    return markup
 
-def get_admin_config_menu_keyboard():
-    """Меню управления конфигами (Inline)"""
-    db = load_db()
-    keyboard = types.InlineKeyboardMarkup(row_width=1)
-    
-    for key, data in PRICES.items():
-        days = data['days']
-        status = "✅ Есть" if key in db["configs"] else "❌ Нет"
-        text = f"{status} Конфиг на {days} дней"
-        keyboard.add(types.InlineKeyboardButton(text, callback_data=f"admin_cfg_edit_{key}"))
-        
-    keyboard.add(types.InlineKeyboardButton("🔙 В админку", callback_data="admin_menu"))
-    return keyboard
+def payment_methods_keyboard(period_callback_data, amount):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(f"Оплата картой ({amount} ₽)", callback_data=f"pay_card_{period_callback_data}"),
+        types.InlineKeyboardButton(f"Оплата Telegram Stars ({amount} Stars)", callback_data=f"pay_stars_{period_callback_data}"),
+        types.InlineKeyboardButton("Назад", callback_data="buy_vpn")
+    )
+    return markup
 
+def my_account_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("Запросить конфиг", callback_data="request_config"),
+        types.InlineKeyboardButton("Продлить подписку", callback_data="buy_vpn"),
+        types.InlineKeyboardButton("Назад", callback_data="main_menu")
+    )
+    return markup
 
-# --- ОБРАБОТЧИКИ СОСТОЯНИЙ (СТЕПЫ ДЛЯ TELEBOT) ---
-
+# --- ОБРАБОТЧИК КОМАНДЫ /start ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    """Обработчик команды /start"""
-    user_id = message.from_user.id
-    
-    # Обновление username пользователя
-    username = message.from_user.username
-    if username:
-        update_user(user_id, username=username)
+    user_id = str(message.from_user.id)
+    username = message.from_user.username if message.from_user.username else 'N/A'
+    first_name = message.from_user.first_name if message.from_user.first_name else 'N/A'
 
-    # Проверка на реферальную ссылку
-    if message.text.startswith('/start '):
-        referred_by_id = message.text.split(' ')[1]
+    if user_id not in users_db:
+        referred_by_id = None
+        if len(message.text.split()) > 1:
+            try:
+                potential_referrer_id = message.text.split()[1]
+                if potential_referrer_id in users_db and potential_referrer_id != user_id:
+                    referred_by_id = potential_referrer_id
+                    users_db[potential_referrer_id]['referrals_count'] = users_db[potential_referrer_id].get('referrals_count', 0) + 1
+                    users_db[potential_referrer_id]['balance'] = users_db[potential_referrer_id].get('balance', 0) + REFERRAL_BONUS_RUB
+                    
+                    # Добавляем дни подписки рефереру, если у него есть активная подписка
+                    if users_db[potential_referrer_id].get('subscription_end'):
+                        current_end = datetime.datetime.strptime(users_db[potential_referrer_id]['subscription_end'], '%Y-%m-%d %H:%M:%S')
+                        new_end = current_end + datetime.timedelta(days=REFERRAL_BONUS_DAYS)
+                        users_db[potential_referrer_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
+                        bot.send_message(potential_referrer_id, 
+                                         f"🎉 Ваш реферал @{username} зарегистрировался по вашей ссылке! "
+                                         f"Вам начислено {REFERRAL_BONUS_RUB} ₽ на баланс и {REFERRAL_BONUS_DAYS} дней к подписке!")
+                    else:
+                        bot.send_message(potential_referrer_id, 
+                                         f"🎉 Ваш реферал @{username} зарегистрировался по вашей ссылке! "
+                                         f"Вам начислено {REFERRAL_BONUS_RUB} ₽ на баланс.")
+
+                    save_data('users.json', users_db)
+            except ValueError:
+                pass # Если реферальный ID некорректен
+
+        users_db[user_id] = {
+            'balance': 0,
+            'subscription_end': None,
+            'referred_by': referred_by_id,
+            'username': username,
+            'first_name': first_name,
+            'referrals_count': 0
+        }
+        save_data('users.json', users_db)
+
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в VPN Bot!",
+                     reply_markup=main_menu_keyboard(message.from_user.id))
+
+# --- ОБРАБОТЧИК CALLBACK-КНОПОК ---
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    user_id = str(call.from_user.id)
+    if call.data == "main_menu":
+        bot.edit_message_text("Главное меню:", chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=main_menu_keyboard(user_id))
+    
+    # --- ПОКУПКА VPN ---
+    elif call.data == "buy_vpn":
+        bot.edit_message_text("Выберите срок подписки:", chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=buy_vpn_keyboard())
+    
+    elif call.data.startswith("choose_period_"):
+        period_data = call.data.replace("choose_period_", "") # 1_month, 2_months, 3_months
+        amount = 0
+        if period_data == "1_month":
+            amount = PRICE_MONTH
+        elif period_data == "2_months":
+            amount = PRICE_2_MONTHS
+        elif period_data == "3_months":
+            amount = PRICE_3_MONTHS
         
-        user = get_user(user_id)
-        if user["referred_by"] is None and referred_by_id != str(user_id):
-            referrer = get_user(referred_by_id)
-            if referrer:
-                # Начисление бонуса рефереру
-                new_balance = referrer["balance"] + REFERRAL_BONUS_AMOUNT
-                new_end_time = add_subscription(referred_by_id, REFERRAL_BONUS_DAYS * 24 * 3600)
-                new_referrals = referrer["referrals_count"] + 1
+        bot.edit_message_text(f"Вы выбрали подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}. "
+                              f"К оплате: {amount} ₽.\nВыберите способ оплаты:",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=payment_methods_keyboard(period_data, amount))
+
+    elif call.data.startswith("pay_card_"):
+        period_data = call.data.replace("pay_card_", "")
+        amount = 0
+        if period_data == "1_month":
+            amount = PRICE_MONTH
+        elif period_data == "2_months":
+            amount = PRICE_2_MONTHS
+        elif period_data == "3_months":
+            amount = PRICE_3_MONTHS
+        
+        payment_id = generate_payment_id()
+        payments_db[payment_id] = {
+            'user_id': user_id,
+            'amount': amount,
+            'status': 'pending',
+            'screenshot_id': None,
+            'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'period': period_data,
+            'method': 'card'
+        }
+        save_data('payments.json', payments_db)
+
+        bot.edit_message_text(f"Для оплаты {amount} ₽ за подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}:"
+                              f"\n\n1. Переведите {amount} ₽ на карту: `{CARD_NUMBER}`"
+                              f"\nДержатель: `{CARD_HOLDER}`"
+                              f"\n\n2. **ОБЯЗАТЕЛЬНО** отправьте скриншот перевода в этот чат."
+                              f"\n\nПосле получения скриншота администратор проверит платеж и подтвердит вашу подписку."
+                              f"\n**Ваш платеж может быть подтвержден с задержкой, ожидайте, пожалуйста.**",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              parse_mode='Markdown')
+        
+        # Уведомляем админа о новом платеже
+        bot.send_message(ADMIN_ID, 
+                         f"🔔 Новый платеж на {amount} ₽ от @{call.from_user.username} (ID: {user_id}) за {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}. "
+                         f"Ожидает скриншот.", 
+                         reply_markup=main_menu_keyboard(ADMIN_ID)) # Админка всегда доступна из главного меню
+
+    elif call.data.startswith("pay_stars_"):
+        period_data = call.data.replace("pay_stars_", "")
+        amount = 0
+        if period_data == "1_month":
+            amount = PRICE_MONTH
+        elif period_data == "2_months":
+            amount = PRICE_2_MONTHS
+        elif period_data == "3_months":
+            amount = PRICE_3_MONTHS
+        
+        # Для оплаты Stars нужна специальная логика Telegram Payments.
+        # Это упрощенная заглушка. Для реальной работы нужно использовать invoices.
+        bot.edit_message_text(f"Оплата Telegram Stars пока находится в разработке! "
+                              f"Пожалуйста, используйте оплату картой.\n\n"
+                              f"К оплате: {amount} Stars.",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=buy_vpn_keyboard())
+
+    # --- ЛИЧНЫЙ КАБИНЕТ ---
+    elif call.data == "my_account":
+        user_info = users_db.get(user_id, {})
+        subscription_end = user_info.get('subscription_end')
+        balance = user_info.get('balance', 0)
+
+        status_text = "Нет активной подписки"
+        if subscription_end:
+            end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
+            if end_date > datetime.datetime.now():
+                status_text = f"Подписка активна до: {end_date.strftime('%d.%m.%Y %H:%M')}"
+            else:
+                status_text = "Подписка истекла"
+                users_db[user_id]['subscription_end'] = None # Обнуляем, если истекла
+                save_data('users.json', users_db)
+
+        bot.edit_message_text(f"👤 Ваш личный кабинет:\n\n"
+                              f"Статус подписки: {status_text}\n"
+                              f"Баланс: {balance} ₽\n"
+                              f"Ваше имя: {user_info.get('first_name', 'N/A')}\n"
+                              f"Ваш username: @{user_info.get('username', 'N/A')}\n\n",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=my_account_keyboard())
+
+    elif call.data == "request_config":
+        user_info = users_db.get(user_id, {})
+        subscription_end = user_info.get('subscription_end')
+
+        if subscription_end:
+            end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
+            if end_date > datetime.datetime.now():
+                # Проверяем, есть ли конфиги
+                available_configs = []
+                for period, configs_list in configs_db.items():
+                    available_configs.extend(configs_list)
+
+                if available_configs:
+                    # Просто выдаем первый попавшийся конфиг, для простоты
+                    # В реальной системе можно выдавать уникальный или по запросу
+                    config = available_configs[0]
+                    bot.send_message(call.message.chat.id, "Вот ваш VPN конфиг:")
+                    if config.get('image'):
+                        bot.send_photo(call.message.chat.id, config['image'])
+                    bot.send_message(call.message.chat.id, 
+                                     f"**Имя:** {config['name']}\n"
+                                     f"**Код:** `{config['code']}`\n"
+                                     f"**Ссылка:** {config['link']}",
+                                     parse_mode='Markdown')
+                else:
+                    bot.send_message(call.message.chat.id, "К сожалению, сейчас нет доступных VPN-конфигов. Обратитесь в поддержку.")
+            else:
+                bot.send_message(call.message.chat.id, "Ваша подписка истекла. Пожалуйста, продлите ее.")
+        else:
+            bot.send_message(call.message.chat.id, "У вас нет активной подписки. Приобретите ее, чтобы получить конфиг.")
+        
+        bot.send_message(call.message.chat.id, "Что еще вы хотите сделать?", reply_markup=main_menu_keyboard(user_id))
+
+    # --- ПОДДЕРЖКА ---
+    elif call.data == "support":
+        bot.edit_message_text(f"Для связи с поддержкой напишите @Gl1ch555.\n"
+                              f"Постараемся ответить как можно скорее.",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              reply_markup=main_menu_keyboard(user_id))
+
+    # --- РЕФЕРАЛЬНАЯ СИСТЕМА ---
+    elif call.data == "referral_system":
+        referral_link = f"https://t.me/{bot.get_me().username}?start={user_id}"
+        user_info = users_db.get(user_id, {})
+        referrals_count = user_info.get('referrals_count', 0)
+        balance = user_info.get('balance', 0)
+
+        bot.edit_message_text(f"🤝 **Реферальная система**\n\n"
+                              f"Приглашайте друзей и получайте бонусы!\n"
+                              f"За каждого приглашенного пользователя, который зарегистрируется по вашей ссылке, "
+                              f"вы получите {REFERRAL_BONUS_RUB} ₽ на баланс и {REFERRAL_BONUS_DAYS} дней к активной подписке.\n\n"
+                              f"Ваша реферальная ссылка: `{referral_link}`\n\n"
+                              f"Количество ваших рефералов: {referrals_count}\n"
+                              f"Ваш реферальный баланс: {balance} ₽",
+                              chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              parse_mode='Markdown', reply_markup=main_menu_keyboard(user_id))
+
+    # --- АДМИН-ПАНЕЛЬ ---
+    elif call.data == "admin_panel":
+        if str(user_id) == str(ADMIN_ID):
+            bot.edit_message_text("🛠️ Админ-панель:", chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  reply_markup=admin_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+            bot.edit_message_text("Главное меню:", chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  reply_markup=main_menu_keyboard(user_id))
+
+    elif call.data == "admin_manage_configs":
+        if str(user_id) == str(ADMIN_ID):
+            bot.edit_message_text("Управление конфигами:", chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  reply_markup=manage_configs_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+    
+    elif call.data == "admin_show_configs":
+        if str(user_id) == str(ADMIN_ID):
+            message_text = "**Текущие конфиги:**\n\n"
+            for period, configs_list in configs_db.items():
+                message_text += f"**{period.replace('_', ' ').capitalize()}:**\n"
+                if configs_list:
+                    for i, config in enumerate(configs_list):
+                        message_text += f"  {i+1}. Имя: {config['name']}, Код: `{config['code']}` (ID: {i})\n"
+                else:
+                    message_text += "  (Нет конфигов)\n"
+            
+            bot.edit_message_text(message_text, chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  parse_mode='Markdown', reply_markup=manage_configs_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_add_config":
+        if str(user_id) == str(ADMIN_ID):
+            bot.send_message(call.message.chat.id, "Введите данные конфига в формате:\n"
+                                                  "`период_подписки|название_конфига|url_изображения|код_конфига|ссылка_на_конфиг`\n"
+                                                  "Пример: `1_month|Germany 1|https://example.com/image.png|config_code_here|https://example.com/config.ovpn`\n"
+                                                  "Поддерживаемые периоды: `1_month`, `2_months`, `3_months`\n"
+                                                  "Если изображения нет, можно использовать `none` вместо url.")
+            bot.register_next_step_handler(call.message, process_add_config)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_delete_config":
+        if str(user_id) == str(ADMIN_ID):
+            bot.send_message(call.message.chat.id, "Введите период и ID конфига для удаления (например, `1_month 0` для первого конфига на 1 месяц).")
+            bot.register_next_step_handler(call.message, process_delete_config)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_confirm_payments":
+        if str(user_id) == str(ADMIN_ID):
+            pending_payments = {pid: p_data for pid, p_data in payments_db.items() if p_data['status'] == 'pending' and p_data['screenshot_id']}
+            if not pending_payments:
+                bot.edit_message_text("Нет платежей, ожидающих подтверждения со скриншотами.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_keyboard())
+                return
+            
+            for payment_id, p_data in pending_payments.items():
+                user_payment = users_db.get(p_data['user_id'])
+                if user_payment:
+                    bot.send_photo(ADMIN_ID, p_data['screenshot_id'], 
+                                   caption=f"Платеж ID: {payment_id}\n"
+                                           f"От: @{user_payment.get('username', 'N/A')} (ID: {p_data['user_id']})\n"
+                                           f"Сумма: {p_data['amount']} ₽\n"
+                                           f"Период: {p_data['period'].replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}\n"
+                                           f"Время: {p_data['timestamp']}",
+                                   reply_markup=confirm_payments_keyboard(payment_id))
+            bot.send_message(ADMIN_ID, "👆 Это все платежи со скриншотами, ожидающие подтверждения.", reply_markup=admin_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data.startswith("admin_confirm_"):
+        if str(user_id) == str(ADMIN_ID):
+            payment_id = call.data.replace("admin_confirm_", "")
+            if payment_id in payments_db and payments_db[payment_id]['status'] == 'pending':
+                payments_db[payment_id]['status'] = 'confirmed'
                 
-                update_user(referred_by_id, 
-                            balance=new_balance,
-                            referrals_count=new_referrals)
+                target_user_id = payments_db[payment_id]['user_id']
+                period_data = payments_db[payment_id]['period']
                 
-                update_user(user_id, referred_by=referred_by_id)
+                # Обновляем подписку пользователя
+                if target_user_id in users_db:
+                    current_end = users_db[target_user_id].get('subscription_end')
+                    if current_end:
+                        current_end = datetime.datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S')
+                    else:
+                        current_end = datetime.datetime.now()
+
+                    add_days = 0
+                    if period_data == '1_month': add_days = 30
+                    elif period_data == '2_months': add_days = 60
+                    elif period_data == '3_months': add_days = 90
+                    
+                    new_end = current_end + datetime.timedelta(days=add_days)
+                    users_db[target_user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
+                    save_data('users.json', users_db)
+
+                    bot.send_message(target_user_id, 
+                                     f"✅ Ваш платеж за подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')} подтвержден!\n"
+                                     f"Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
+                                     f"Можете запросить конфиг в личном кабинете.",
+                                     reply_markup=main_menu_keyboard(target_user_id))
                 
-                bot.send_message(
-                    referred_by_id,
-                    f"🎉 **Отличная новость!** Пользователь @{username or user_id} "
-                    f"зарегистрировался по вашей ссылке!\n"
-                    f"Вам начислено **{REFERRAL_BONUS_AMOUNT} ₽** на баланс и **{REFERRAL_BONUS_DAYS} дней** подписки "
-                    f"(до {time.strftime('%d.%m.%Y', time.localtime(new_end_time))})!",
-                    parse_mode="Markdown"
-                )
+                save_data('payments.json', payments_db)
+                bot.edit_message_text(f"Платеж {payment_id} подтвержден.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+            else:
+                bot.edit_message_text("Платеж уже обработан или не найден.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
-    # Приветственное сообщение
-    text = (
-        f"👋 **Привет, {message.from_user.first_name}!**\n"
-        f"Я бот для продажи VPN ({VPN_SERVER_NAME}).\n"
-        f"Выбери интересующий пункт меню ниже."
-    )
+    elif call.data.startswith("admin_reject_"):
+        if str(user_id) == str(ADMIN_ID):
+            payment_id = call.data.replace("admin_reject_", "")
+            if payment_id in payments_db and payments_db[payment_id]['status'] == 'pending':
+                payments_db[payment_id]['status'] = 'rejected'
+                save_data('payments.json', payments_db)
+                
+                target_user_id = payments_db[payment_id]['user_id']
+                bot.send_message(target_user_id, 
+                                 f"❌ Ваш платеж (ID: {payment_id}) был отклонен администратором. "
+                                 f"Пожалуйста, свяжитесь с поддержкой (@Gl1ch555) для уточнения.",
+                                 reply_markup=main_menu_keyboard(target_user_id))
+                
+                bot.edit_message_text(f"Платеж {payment_id} отклонен.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+            else:
+                bot.edit_message_text("Платеж уже обработан или не найден.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_users_list":
+        if str(user_id) == str(ADMIN_ID):
+            message_text = "**Список пользователей:**\n\n"
+            for uid, u_data in users_db.items():
+                sub_end_str = "Нет"
+                if u_data.get('subscription_end'):
+                    sub_end = datetime.datetime.strptime(u_data['subscription_end'], '%Y-%m-%d %H:%M:%S')
+                    if sub_end > datetime.datetime.now():
+                        sub_end_str = sub_end.strftime('%d.%m.%Y %H:%M')
+                    else:
+                        sub_end_str = "Истекла"
+                
+                message_text += f"ID: {uid}\n" \
+                                f"  Имя: {u_data.get('first_name', 'N/A')} (@{u_data.get('username', 'N/A')})\n" \
+                                f"  Подписка до: {sub_end_str}\n" \
+                                f"  Баланс: {u_data.get('balance', 0)} ₽\n" \
+                                f"  Рефералов: {u_data.get('referrals_count', 0)}\n\n"
+            
+            bot.edit_message_text(message_text, chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  parse_mode='Markdown', reply_markup=admin_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
     
-    bot.send_message(user_id, text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    elif call.data == "admin_edit_user":
+        if str(user_id) == str(ADMIN_ID):
+            bot.send_message(call.message.chat.id, "Введите ID пользователя, которого хотите изменить.")
+            bot.register_next_step_handler(call.message, process_edit_user_id)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
-@bot.message_handler(commands=['admin'])
-def admin_start(message):
-    """Обработчик команды /admin"""
-    if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ У вас нет прав администратора.")
+    elif call.data == "admin_broadcast":
+        if str(user_id) == str(ADMIN_ID):
+            bot.send_message(call.message.chat.id, "Введите сообщение для рассылки всем пользователям.")
+            bot.register_next_step_handler(call.message, process_broadcast_message)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+# --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
+@bot.message_handler(content_types=['photo'])
+def handle_screenshot(message):
+    user_id = str(message.from_user.id)
+    # Ищем ожидающий платеж от этого пользователя
+    pending_payment = None
+    for payment_id, p_data in payments_db.items():
+        if p_data['user_id'] == user_id and p_data['status'] == 'pending' and p_data['screenshot_id'] is None:
+            pending_payment = payment_id
+            break
+    
+    if pending_payment:
+        payments_db[pending_payment]['screenshot_id'] = message.photo[-1].file_id
+        save_data('payments.json', payments_db)
         
-    bot.send_message(
-        message.chat.id,
-        "⚙️ **Добро пожаловать в Админку!**\n"
-        "Выберите действие:",
-        reply_markup=get_admin_main_keyboard(),
-        parse_mode="Markdown"
-    )
-
-# --- ОБРАБОТЧИКИ МЕНЮ (Reply-кнопки) ---
-
-@bot.message_handler(func=lambda message: message.text == "🚀 Купить VPN")
-def buy_vpn_menu(message):
-    """Меню покупки VPN"""
-    text = (
-        "💰 **Выберите тарифный план:**\n"
-        f"Сервер: **{VPN_SERVER_NAME}**"
-    )
-    bot.send_message(message.chat.id, text, reply_markup=get_buy_options_keyboard(), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: message.text == "👤 Личный кабинет")
-def personal_account(message):
-    """Личный кабинет пользователя"""
-    user_id = message.from_user.id
-    user = get_user(user_id)
-    
-    is_active = check_subscription(user_id)
-    status_text = "✅ Активна" if is_active else "❌ Неактивна"
-    
-    end_date_text = "—"
-    if is_active:
-        end_date_text = time.strftime("%d.%m.%Y %H:%M:%S", time.localtime(user["subscription_end"]))
+        bot.send_message(message.chat.id, "Скриншот получен! Ожидайте подтверждения от администратора. "
+                                         "Ваш платеж может быть подтвержден с задержкой.")
         
-    text = (
-        "👤 **Ваш личный кабинет**\n"
-        f"**Статус подписки:** {status_text}\n"
-        f"**Окончание подписки:** {end_date_text}\n"
-        f"**Ваш баланс (руб):** {user['balance']} ₽\n"
-        "\n"
-        "Выберите действие ниже:"
-    )
-    
-    bot.send_message(message.chat.id, text, reply_markup=get_profile_keyboard(user_id), parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: message.text == "❓ Поддержка")
-def support_info(message):
-    """Информация о поддержке"""
-    text = (
-        "🆘 **Поддержка**\n"
-        "По всем вопросам обращайтесь к администратору:\n"
-        f"Ник: **{SUPPORT_USERNAME}**"
-    )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: message.text == "🎁 Реферальная система")
-def referral_system(message):
-    """Информация о реферальной системе"""
-    user = get_user(message.from_user.id)
-    
-    referral_link = f"https://t.me/{bot.get_me().username}?start={user['referral_code']}"
-    
-    text = (
-        "🎁 **Реферальная система**\n"
-        "Приглашайте друзей и получайте бонусы!\n"
-        f"За каждого приглашенного вы получаете:\n"
-        f"  - **{REFERRAL_BONUS_AMOUNT} ₽** на баланс\n"
-        f"  - **{REFERRAL_BONUS_DAYS} дней** подписки\n"
-        f"\n"
-        f"**Ваших рефералов:** {user['referrals_count']} чел.\n"
-        f"**Ваша реферальная ссылка:** `{referral_link}`"
-    )
-    
-    bot.send_message(message.chat.id, text, reply_markup=get_profile_keyboard(message.from_user.id), parse_mode="Markdown")
-
-# Админка: Выход
-@bot.message_handler(func=lambda message: message.text == "🔙 Выйти из админки" and message.from_user.id == ADMIN_ID)
-def exit_admin(message):
-    """Выход из админки"""
-    bot.send_message(message.chat.id, "👋 Вы вышли из админки.", reply_markup=get_main_keyboard())
-
-# Админка: Неподтвержденные платежи
-@bot.message_handler(func=lambda message: message.text == "✅ Неподтвержденные платежи" and message.from_user.id == ADMIN_ID)
-def admin_pending_payments(message):
-    """Поиск пользователей с ожидающим платежом"""
-    db = load_db()
-    pending_payments = db["pending_payments"]
-    
-    if not pending_payments:
-        return bot.send_message(message.chat.id, "ℹ️ Нет неподтвержденных платежей.")
-        
-    text = "⏳ **Ожидающие подтверждения платежи:**\n"
-    for payment_id, data in pending_payments.items():
-        user_id = data['user_id']
-        username = data.get('username', 'N/A')
-        plan_key = data['plan_key']
-        
-        text += (
-            f"\n"
-            f"ID платежа: `{payment_id}`\n"
-            f"От: @{username} (ID: `{user_id}`)\n"
-            f"Ожидает: {PRICES.get(plan_key, {}).get('days', '?')} дней за {PRICES.get(plan_key, {}).get('price', '?')} ₽\n"
-            f"(Нужно найти скриншот выше и нажать кнопки)"
-        )
-        
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-# Админка: Управление конфигами
-@bot.message_handler(func=lambda message: message.text == "🛠️ Управление конфигами" and message.from_user.id == ADMIN_ID)
-def admin_config_menu(message):
-    """Меню управления конфигами"""
-    bot.send_message(
-        message.chat.id,
-        "🛠️ **Управление конфигами**\n"
-        "Выберите тариф для настройки/изменения конфига:",
-        reply_markup=get_admin_config_menu_keyboard(),
-        parse_mode="Markdown"
-    )
-
-# --- ХЕНДЛЕРЫ ДЛЯ ПРОЦЕССА ОПЛАТЫ И КОНФИГОВ (TELEBOT) ---
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
-def process_buy_callback(call):
-    """Начало процесса покупки"""
-    plan_key = call.data.split('_')[1]
-    
-    if plan_key not in PRICES:
-        return bot.answer_callback_query(call.id, "❌ Тариф не найден.", show_alert=True)
-    
-    plan_data = PRICES[plan_key]
-    price = plan_data['price']
-    
-    # Сохраняем выбранный план в базе
-    update_user(call.from_user.id, last_config_type=plan_key)
-    
-    text = (
-        f"💳 **Оплата подписки на {plan_data['days']} дней ({price} ₽)**\n"
-        "Для оплаты выполните перевод на сумму **{price} ₽** по следующим реквизитам:\n"
-        f"**Номер карты:** `{CARD_NUMBER}`\n"
-        f"**Банк/Получатель:** `{CARD_HOLDER_INFO}`\n"
-        "\n"
-        "⚠️ **Важно!** После перевода **ОБЯЗАТЕЛЬНО** отправьте скриншот подтверждения платежа в чат.\n"
-        "После проверки администратором вам будет выдан конфиг."
-    )
-    
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("✅ Я оплатил, готов отправить скриншот", callback_data=f"wait_scr_{plan_key}"))
-    keyboard.add(types.InlineKeyboardButton("🔙 Отмена", callback_data="main_menu"))
-    
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=keyboard, parse_mode="Markdown")
-    bot.answer_callback_query(call.id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('wait_scr_'))
-def process_paid_and_waiting(call):
-    """Пользователь готов отправить скриншот"""
-    plan_key = call.data.split('_')[2]
-    
-    msg = bot.edit_message_text("🖼️ **Ожидаю скриншот перевода.**\nОтправьте его мне как *изображение* или *файл*.", 
-                                call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    
-    # Регистрируем следующий шаг на прием скриншота, передавая plan_key
-    bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
-    bot.answer_callback_query(call.id)
-
-def process_screenshot(message, plan_key):
-    """Получение скриншота и отправка админу"""
-    user_id = message.from_user.id
-    price = PRICES[plan_key]['price']
-    
-    # Проверка, что это фото или документ
-    if message.content_type not in ['photo', 'document']:
-        msg = bot.send_message(user_id, "❌ Это не скриншот. Пожалуйста, отправьте его как изображение или файл.")
-        return bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
-
-    file_id = None
-    if message.photo:
-        file_id = message.photo[-1].file_id
-        file_type = "photo"
-    elif message.document:
-        file_id = message.document.file_id
-        file_type = "document"
-    
-    if not file_id:
-        msg = bot.send_message(user_id, "❌ Не удалось получить файл. Попробуйте еще раз.")
-        return bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
-        
-    # Создание уникального ID для платежа
-    payment_id = f"{user_id}_{int(time.time())}"
-    
-    # Сохранение информации о платеже в базе
-    db = load_db()
-    db["pending_payments"][payment_id] = {
-        "user_id": user_id,
-        "username": message.from_user.username,
-        "plan_key": plan_key,
-        "file_id": file_id,
-        "file_type": file_type
-    }
-    save_db(db)
-    
-    # Отправка админу на подтверждение
-    admin_text = (
-        f"🔔 **НОВЫЙ ПЛАТЕЖ!** (ID: `{payment_id}`)\n"
-        f"**От:** Пользователь @{message.from_user.username or user_id} (ID: `{user_id}`)\n"
-        f"**Тариф:** {PRICES[plan_key]['days']} дней\n"
-        f"**Сумма:** {price} ₽"
-    )
-    
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.row(
-        types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"admin_confirm_{payment_id}"),
-        types.InlineKeyboardButton("❌ Отклонить", callback_data=f"admin_decline_{payment_id}")
-    )
-    
-    # Отправка скриншота
-    if file_type == "photo":
-        bot.send_photo(ADMIN_ID, file_id, caption=admin_text, reply_markup=keyboard, parse_mode="Markdown")
+        # Уведомляем админа о новом скриншоте
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, 
+                       caption=f"❗️ Новый скриншот платежа ID: {pending_payment}\n"
+                               f"От: @{message.from_user.username} (ID: {user_id})\n"
+                               f"Сумма: {payments_db[pending_payment]['amount']} ₽\n"
+                               f"Период: {payments_db[pending_payment]['period'].replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}\n"
+                               f"Время: {payments_db[pending_payment]['timestamp']}",
+                       reply_markup=confirm_payments_keyboard(pending_payment))
     else:
-        bot.send_document(ADMIN_ID, file_id, caption=admin_text, reply_markup=keyboard, parse_mode="Markdown")
-    
-    # Уведомление пользователя
-    bot.send_message(user_id,
-        "✅ **Скриншот получен!**\n"
-        "Ваш платеж отправлен на проверку администратору. "
-        "Пожалуйста, ожидайте подтверждения (обычно занимает не более 5-10 минут)."
-    )
+        bot.send_message(message.chat.id, "Не могу найти ожидающий платеж для этого скриншота. "
+                                         "Возможно, вы уже отправили скриншот или не инициировали платеж. "
+                                         "Если возникли проблемы, обратитесь в поддержку (@Gl1ch555).")
 
-@bot.callback_query_handler(func=lambda call: call.data == 'get_config')
-def process_get_config(call):
-    """Выдача конфига из личного кабинета"""
-    user_id = call.from_user.id
-    user = get_user(user_id)
-    
-    if not check_subscription(user_id):
-        return bot.answer_callback_query(call.id, "❌ Ваша подписка неактивна. Пожалуйста, продлите ее.", show_alert=True)
-        
-    config_key = user['last_config_type']
-    db = load_db()
-    
-    if not config_key or config_key not in db["configs"]:
-        return bot.answer_callback_query(call.id, "❌ Не удалось найти информацию о вашем конфиге. Обратитесь в поддержку.", show_alert=True)
-        
-    config_data = db["configs"][config_key]
-    
-    text = (
-        f"🔑 **Ваш VPN-конфиг ({PRICES[config_key]['days']} дней)**\n"
-        f"**Сервер:** {VPN_SERVER_NAME}\n"
-        f"\n"
-        f"🔗 **Ссылка на конфиг:** {config_data['link']}\n"
-        f"📋 **Код (если требуется):** `{config_data['code']}`\n"
-        f"\n"
-        f"**Описание по установке:**\n"
-        f"{config_data['description']}\n"
-        f"\n"
-        f"**Окончание подписки:** {time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(user['subscription_end']))}"
-    )
-    
-    bot.send_message(user_id, text, parse_mode="Markdown")
-    bot.answer_callback_query(call.id)
+# --- СЛЕДУЮЩИЕ ШАГИ ДЛЯ АДМИНКИ ---
+def process_add_config(message):
+    user_id = str(message.from_user.id)
+    if user_id != str(ADMIN_ID): return
 
-@bot.callback_query_handler(func=lambda call: call.data == 'main_menu')
-def process_main_menu(call):
-    """Возврат в главное меню"""
-    # Удаляем сообщение с кнопками, чтобы не было "висящих" клавиатур
     try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
-        pass # Игнорируем ошибку, если сообщение уже удалено
-    send_welcome(call.message)
-    bot.answer_callback_query(call.id)
-
-
-# --- АДМИНКА: ОБРАБОТЧИКИ CALLBACKS (TELEBOT) ---
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_confirm_') and call.from_user.id == ADMIN_ID)
-def admin_confirm_payment(call):
-    """Подтверждение платежа администратором"""
-    payment_id = call.data.split('_')[2]
+        parts = message.text.split('|')
+        if len(parts) != 5:
+            raise ValueError("Некорректный формат. Используйте `период|название|url_изображения|код|ссылка`")
         
-    db = load_db()
-    payment_data = db["pending_payments"].pop(payment_id, None)
-    
-    if not payment_data:
-        bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
-                                 caption=call.message.caption + "\n\n**⚠️ ПЛАТЕЖ УЖЕ БЫЛ ОБРАБОТАН.**", 
-                                 reply_markup=None, parse_mode="Markdown")
-        return bot.answer_callback_query(call.id, "❌ Платеж уже обработан.", show_alert=True)
+        period, name, image_url, code, link = [p.strip() for p in parts]
+        if period not in ['1_month', '2_months', '3_months']:
+            raise ValueError("Некорректный период подписки.")
+        
+        new_config = {
+            'name': name,
+            'image': image_url if image_url.lower() != 'none' else None,
+            'code': code,
+            'link': link
+        }
+        
+        if period not in configs_db:
+            configs_db[period] = []
+        configs_db[period].append(new_config)
+        save_data('configs.json', configs_db)
+        
+        bot.send_message(user_id, "Конфиг успешно добавлен!", reply_markup=admin_keyboard())
+    except Exception as e:
+        bot.send_message(user_id, f"Ошибка при добавлении конфига: {e}\nПопробуйте еще раз.", reply_markup=admin_keyboard())
 
-    user_id = payment_data['user_id']
-    plan_key = payment_data['plan_key']
-    
-    # 1. Активация подписки
-    duration = PRICES[plan_key]["duration"]
-    new_end_time = add_subscription(user_id, duration)
-    
-    # 2. Обновление БД
-    save_db(db)
-    
-    # 3. Отправка конфига пользователю (логика та же, что в get_config)
-    config_data = db["configs"].get(plan_key)
-    if config_data:
-        config_text = (
-            f"🎉 **Ваш платеж подтвержден!**\n"
-            f"Подписка на **{PRICES[plan_key]['days']} дней** активирована.\n"
-            f"\n"
-            f"🔑 **Ваш VPN-конфиг ({PRICES[plan_key]['days']} дней)**\n"
-            f"**Сервер:** {VPN_SERVER_NAME}\n"
-            f"\n"
-            f"🔗 **Ссылка на конфиг:** {config_data['link']}\n"
-            f"📋 **Код (если требуется):** `{config_data['code']}`\n"
-            f"\n"
-            f"**Описание по установке:**\n"
-            f"{config_data['description']}\n"
-            f"\n"
-            f"**Окончание подписки:** {time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(new_end_time))}"
-        )
+def process_delete_config(message):
+    user_id = str(message.from_user.id)
+    if user_id != str(ADMIN_ID): return
+
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            raise ValueError("Некорректный формат. Используйте `период_подписки ID`")
+        
+        period, config_id_str = parts
+        config_id = int(config_id_str)
+
+        if period not in configs_db:
+            raise ValueError(f"Период '{period}' не найден.")
+        
+        if not (0 <= config_id < len(configs_db[period])):
+            raise ValueError("Некорректный ID конфига для этого периода.")
+        
+        deleted_config = configs_db[period].pop(config_id)
+        save_data('configs.json', configs_db)
+        
+        bot.send_message(user_id, f"Конфиг '{deleted_config['name']}' ({period}) успешно удален.", reply_markup=admin_keyboard())
+    except Exception as e:
+        bot.send_message(user_id, f"Ошибка при удалении конфига: {e}\nПопробуйте еще раз.", reply_markup=admin_keyboard())
+
+def process_edit_user_id(message):
+    user_id = str(message.from_user.id)
+    if user_id != str(ADMIN_ID): return
+
+    target_user_id = message.text.strip()
+    if target_user_id not in users_db:
+        bot.send_message(user_id, "Пользователь с таким ID не найден.", reply_markup=admin_keyboard())
+        return
+
+    bot.send_message(user_id, f"Пользователь {target_user_id} (@{users_db[target_user_id].get('username', 'N/A')}).\n"
+                               "Введите, что хотите изменить:\n"
+                               "`balance <новое_значение>` (например, `balance 100`)\n"
+                               "`sub_end <ГГГГ-ММ-ДД ЧЧ:ММ:СС>` (например, `sub_end 2024-12-31 23:59:59` или `sub_end none` для сброса)\n"
+                               "Или `cancel` для отмены.")
+    bot.register_next_step_handler(message, process_edit_user_data, target_user_id)
+
+def process_edit_user_data(message, target_user_id):
+    user_id = str(message.from_user.id)
+    if user_id != str(ADMIN_ID): return
+
+    command = message.text.strip().lower()
+
+    if command == 'cancel':
+        bot.send_message(user_id, "Изменение пользователя отменено.", reply_markup=admin_keyboard())
+        return
+
+    try:
+        parts = command.split(' ', 1)
+        action = parts[0]
+        value = parts[1] if len(parts) > 1 else None
+
+        if action == 'balance' and value:
+            new_balance = int(value)
+            users_db[target_user_id]['balance'] = new_balance
+            bot.send_message(user_id, f"Баланс пользователя {target_user_id} изменен на {new_balance} ₽.", reply_markup=admin_keyboard())
+            bot.send_message(target_user_id, f"Администратор изменил ваш баланс. Текущий баланс: {new_balance} ₽.")
+        elif action == 'sub_end' and value:
+            if value.lower() == 'none':
+                users_db[target_user_id]['subscription_end'] = None
+                bot.send_message(user_id, f"Подписка пользователя {target_user_id} сброшена.", reply_markup=admin_keyboard())
+                bot.send_message(target_user_id, "Администратор сбросил вашу подписку.")
+            else:
+                new_sub_end = datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                users_db[target_user_id]['subscription_end'] = new_sub_end.strftime('%Y-%m-%d %H:%M:%S')
+                bot.send_message(user_id, f"Подписка пользователя {target_user_id} установлена до {new_sub_end.strftime('%d.%m.%Y %H:%M')}.", reply_markup=admin_keyboard())
+                bot.send_message(target_user_id, f"Администратор изменил срок вашей подписки. Новая дата окончания: {new_sub_end.strftime('%d.%m.%Y %H:%M')}.")
+        else:
+            raise ValueError("Неизвестное действие или отсутствующее значение.")
+        
+        save_data('users.json', users_db)
+
+    except ValueError as ve:
+        bot.send_message(user_id, f"Ошибка формата: {ve}\nПопробуйте еще раз или `cancel`.", reply_markup=admin_keyboard())
+        bot.register_next_step_handler(message, process_edit_user_data, target_user_id)
+    except Exception as e:
+        bot.send_message(user_id, f"Произошла непредвиденная ошибка: {e}\nПопробуйте еще раз или `cancel`.", reply_markup=admin_keyboard())
+        bot.register_next_step_handler(message, process_edit_user_data, target_user_id)
+
+def process_broadcast_message(message):
+    user_id = str(message.from_user.id)
+    if user_id != str(ADMIN_ID): return
+
+    broadcast_text = message.text
+    sent_count = 0
+    failed_count = 0
+
+    bot.send_message(user_id, "Начинаю рассылку...")
+
+    for uid in users_db.keys():
         try:
-            bot.send_message(user_id, config_text, parse_mode="Markdown")
-        except telebot.apihelper.ApiTelegramException:
-             logging.error(f"Не удалось отправить сообщение пользователю {user_id}. Вероятно, он заблокировал бота.")
-             bot.send_message(ADMIN_ID, f"⚠️ **Внимание!** Не удалось отправить конфиг пользователю `{user_id}` (возможно, заблокировал бота).")
-
-    # 4. Обновление сообщения админа
-    bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
-                             caption=call.message.caption + "\n\n**✅ ПЛАТЕЖ ПОДТВЕРЖДЕН и КОНФИГ ВЫДАН.**",
-                             reply_markup=None,
-                             parse_mode="Markdown")
-    bot.answer_callback_query(call.id, "✅ Платеж подтвержден. Подписка активирована и конфиг отправлен.")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_decline_') and call.from_user.id == ADMIN_ID)
-def admin_decline_payment(call):
-    """Отклонение платежа администратором"""
-    payment_id = call.data.split('_')[2]
+            bot.send_message(uid, f"**Объявление от администратора:**\n\n{broadcast_text}", parse_mode='Markdown')
+            sent_count += 1
+            time.sleep(0.1) # Задержка, чтобы не превысить лимиты API Telegram
+        except Exception as e:
+            print(f"Не удалось отправить сообщение пользователю {uid}: {e}")
+            failed_count += 1
     
-    db = load_db()
-    payment_data = db["pending_payments"].pop(payment_id, None)
-    save_db(db)
-    
-    if not payment_data:
-        bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
-                                 caption=call.message.caption + "\n\n**⚠️ ПЛАТЕЖ УЖЕ БЫЛ ОБРАБОТАН.**", 
-                                 reply_markup=None, parse_mode="Markdown")
-        return bot.answer_callback_query(call.id, "❌ Платеж уже обработан.", show_alert=True)
-        
-    user_id = payment_data['user_id']
-    
-    # Уведомление пользователя
-    try:
-        bot.send_message(
-            user_id,
-            "❌ **Ваш платеж не подтвержден.**\n"
-            "Возможно, скриншот был нечетким, или перевод не поступил.\n"
-            f"Пожалуйста, свяжитесь с поддержкой: **{SUPPORT_USERNAME}**",
-            parse_mode="Markdown"
-        )
-    except telebot.apihelper.ApiTelegramException:
-         logging.error(f"Не удалось отправить сообщение пользователю {user_id}. Вероятно, он заблокировал бота.")
-
-    # Обновление сообщения админа
-    bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
-                             caption=call.message.caption + "\n\n**❌ ПЛАТЕЖ ОТКЛОНЕН.**",
-                             reply_markup=None,
-                             parse_mode="Markdown")
-    bot.answer_callback_query(call.id, "❌ Платеж отклонен. Пользователь уведомлен.")
-
-# --- АДМИНКА: КОНФИГИ (TELEBOT) ---
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_cfg_edit_') and call.from_user.id == ADMIN_ID)
-def admin_cfg_start_edit(call):
-    """Начало процесса редактирования конфига"""
-    config_key = call.data.split('_')[-1]
-    plan_data = PRICES[config_key]
-    
-    msg = bot.edit_message_text(
-        f"🔗 **Настройка конфига на {plan_data['days']} дней**\n"
-        "Шаг 1/3: **Отправьте ссылку на VPN-конфиг** (например, ссылку на файл или подписку).",
-        call.message.chat.id, call.message.message_id
-    )
-    
-    # Регистрируем следующий шаг: получение ссылки
-    bot.register_next_step_handler(msg, admin_cfg_get_link, config_key=config_key)
-    bot.answer_callback_query(call.id)
-
-def admin_cfg_get_link(message, config_key):
-    """Получение ссылки на конфиг"""
-    config_link = message.text
-    
-    msg = bot.send_message(message.chat.id, 
-        "📋 Шаг 2/3: **Отправьте код конфига** (QR-код или ключ). "
-        "Если код не нужен, отправьте `НЕТ`."
-    )
-    
-    # Регистрируем следующий шаг: получение кода
-    bot.register_next_step_handler(msg, admin_cfg_get_code, config_key=config_key, config_link=config_link)
-
-def admin_cfg_get_code(message, config_key, config_link):
-    """Получение кода конфига"""
-    code = message.text.upper()
-    config_code = "—" if code == "НЕТ" else code
-    
-    msg = bot.send_message(message.chat.id, 
-        "📝 Шаг 3/3: **Отправьте описание по установке/использованию конфига.** "
-        "Это будет инструкция для пользователя."
-    )
-    
-    # Регистрируем следующий шаг: получение описания и сохранение
-    bot.register_next_step_handler(msg, admin_cfg_save, config_key=config_key, config_link=config_link, config_code=config_code)
-
-def admin_cfg_save(message, config_key, config_link, config_code):
-    """Получение описания и сохранение конфига"""
-    config_description = message.text
-    
-    db = load_db()
-    db["configs"][config_key] = {
-        "link": config_link,
-        "code": config_code,
-        "description": config_description,
-    }
-    save_db(db)
-    
-    plan_data = PRICES[config_key]
-    bot.send_message(
-        message.chat.id,
-        f"✅ **Конфиг на {plan_data['days']} дней успешно обновлен!**\n"
-        f"**Ссылка:** {config_link}\n"
-        f"**Код:** {config_code}\n"
-        f"**Описание:** {config_description}",
-        reply_markup=get_admin_main_keyboard(),
-        parse_mode="Markdown"
-    )
+    bot.send_message(user_id, f"Рассылка завершена. Отправлено {sent_count} сообщений, не отправлено {failed_count}.", reply_markup=admin_keyboard())
 
 # --- ЗАПУСК БОТА ---
-if __name__ == '__main__':
-    logging.info("Бот запускается...")
-    # Инициализация DB и данных админа
-    load_db() 
-    
-    # В telebot используется polling
-    try:
-        bot.polling(none_stop=True, interval=1)
-    except Exception as e:
-        logging.error(f"Ошибка при запуске бота: {e}")
-
+print("Бот запущен...")
+bot.polling(none_stop=True)
