@@ -7,8 +7,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
 # --- КОНСТАНТЫ ---
-# Токен бота
-BOT_TOKEN = "8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY"
+# !!! НОВЫЙ ТОКЕН, ПРЕДОСТАВЛЕННЫЙ ПОЛЬЗОВАТЕЛЕМ !!!
+BOT_TOKEN = "8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8" 
 # ID администратора (ваш ID)
 ADMIN_ID = 8320218178 
 # Ваш ник для поддержки
