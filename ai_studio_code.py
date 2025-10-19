@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 import os
 import random
+import json # Для хранения конфигов как JSON
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_context import FSMContext
 from aiogram.contrib.fsm_context.storage.memory import MemoryStorage
@@ -35,7 +36,6 @@ REFERRAL_BONUS_DAYS = 7     # Дней к подписке
 
 # Путь к базе данных
 DB_NAME = "vpn_bot.db"
-CONFIGS_FOLDER = "configs" # Папка для конфигов VPN
 
 # --- ИНИЦИАЛИЗАЦИЯ БОТА И ДИСПАТЧЕРА ---
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +49,10 @@ class PurchaseStates(StatesGroup):
 
 class AdminStates(StatesGroup):
     waiting_for_message_to_users = State()
+    waiting_for_config_tariff = State() # Для выбора тарифа при добавлении конфига
+    waiting_for_config_text = State()
+    waiting_for_config_image_or_url = State()
+    waiting_for_config_url = State()
 
 # --- ФУНКЦИИ ДЛЯ РАБОТЫ С БАЗОЙ ДАННЫХ ---
 def init_db():
@@ -72,7 +76,7 @@ def init_db():
             start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             end_date TIMESTAMP,
             tariff TEXT NOT NULL, -- '1_month', '2_month', '3_month'
-            config_path TEXT,
+            config_data TEXT,    -- JSON-строка с данными конфига {text, image_id, url}
             is_active BOOLEAN DEFAULT TRUE,
             FOREIGN KEY (user_id) REFERENCES users (telegram_id)
         )
@@ -89,6 +93,17 @@ def init_db():
             confirmed_by INTEGER, -- Admin ID
             confirmed_at TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (telegram_id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vpn_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tariff TEXT NOT NULL, -- '1_month', '2_month', '3_month'
+            config_text TEXT,    -- Сам текст конфига
+            config_image_id TEXT, -- File ID изображения, если есть
+            config_url TEXT,     -- Ссылка на подписку/файл, если есть
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
@@ -164,34 +179,29 @@ def update_payment_status(payment_id, status, admin_id=None):
     conn.commit()
     conn.close()
 
-def add_subscription(user_id, tariff, config_path):
+def add_subscription(user_id, tariff, config_data_json):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     days = SUBSCRIPTION_DAYS.get(tariff, 0)
     
-    # Получаем текущую активную подписку
     active_sub = get_active_subscription(user_id)
     if active_sub:
-        # Если есть, продлеваем ее
         current_end_date_str = active_sub[3]
-        # Проверяем формат даты, если это строка, парсим
         if isinstance(current_end_date_str, str):
             try:
                 current_end_date = datetime.datetime.strptime(current_end_date_str, "%Y-%m-%d %H:%M:%S.%f")
             except ValueError:
-                # Если другой формат, можно попробовать другой или обработать ошибку
                 current_end_date = datetime.datetime.strptime(current_end_date_str, "%Y-%m-%d %H:%M:%S")
-        else: # Если уже datetime object
+        else:
             current_end_date = current_end_date_str
 
         new_end_date = current_end_date + datetime.timedelta(days=days)
-        cursor.execute("UPDATE subscriptions SET end_date = ?, tariff = ? WHERE id = ?",
-                       (new_end_date, tariff, active_sub[0]))
+        cursor.execute("UPDATE subscriptions SET end_date = ?, tariff = ?, config_data = ? WHERE id = ?",
+                       (new_end_date, tariff, config_data_json, active_sub[0]))
     else:
-        # Если нет активной подписки, создаем новую
         end_date = datetime.datetime.now() + datetime.timedelta(days=days)
-        cursor.execute("INSERT INTO subscriptions (user_id, tariff, end_date, config_path) VALUES (?, ?, ?, ?)",
-                       (user_id, tariff, end_date, config_path))
+        cursor.execute("INSERT INTO subscriptions (user_id, tariff, end_date, config_data) VALUES (?, ?, ?, ?)",
+                       (user_id, tariff, end_date, config_data_json))
     conn.commit()
     conn.close()
 
@@ -244,18 +254,63 @@ def get_all_users():
     conn.close()
     return [user[0] for user in users]
 
+# --- Функции для управления VPN конфигами ---
+def add_vpn_config(tariff, config_text=None, config_image_id=None, config_url=None):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO vpn_configs (tariff, config_text, config_image_id, config_url) VALUES (?, ?, ?, ?)",
+                   (tariff, config_text, config_image_id, config_url))
+    conn.commit()
+    conn.close()
+
+def get_active_vpn_configs(tariff):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, config_text, config_image_id, config_url FROM vpn_configs WHERE tariff = ? AND is_active = TRUE", (tariff,))
+    configs = cursor.fetchall()
+    conn.close()
+    # Возвращаем список словарей для удобства
+    return [{"id": c[0], "config_text": c[1], "config_image_id": c[2], "config_url": c[3]} for c in configs]
+
+def get_all_vpn_configs():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, tariff, config_text, config_image_id, config_url, is_active FROM vpn_configs ORDER BY tariff, id")
+    configs = cursor.fetchall()
+    conn.close()
+    return configs
+
+def get_vpn_config_by_id(config_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, tariff, config_text, config_image_id, config_url, is_active FROM vpn_configs WHERE id = ?", (config_id,))
+    config = cursor.fetchone()
+    conn.close()
+    return config
+
+def toggle_vpn_config_status(config_id, current_status):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    new_status = not current_status
+    cursor.execute("UPDATE vpn_configs SET is_active = ? WHERE id = ?", (new_status, config_id))
+    conn.commit()
+    conn.close()
+    return new_status
+
+def delete_vpn_config(config_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM vpn_configs WHERE id = ?", (config_id,))
+    conn.commit()
+    conn.close()
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def generate_referral_code():
     import uuid
     return str(uuid.uuid4())[:8] # Короткий уникальный код
 
-def get_random_config_path(tariff_key):
-    # Пример: configs/1_month_config_1.conf
-    # Ищем все файлы, начинающиеся с `tariff_key`
-    possible_configs = [f for f in os.listdir(CONFIGS_FOLDER) if f.startswith(f"{tariff_key}_config")]
-    if not possible_configs:
-        return None
-    return os.path.join(CONFIGS_FOLDER, random.choice(possible_configs))
+def get_tariff_name(tariff_key):
+    return tariff_key.replace('_', ' ').capitalize()
 
 # --- КЛАВИАТУРЫ ---
 def get_main_menu_keyboard():
@@ -300,6 +355,7 @@ def get_admin_menu_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
         types.InlineKeyboardButton("👀 Проверить платежи", callback_data="admin_check_payments"),
+        types.InlineKeyboardButton("➕ Управление конфигами", callback_data="admin_manage_configs"),
         types.InlineKeyboardButton("✉️ Сделать рассылку", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("📊 Статистика (скоро)", callback_data="admin_stats")
     )
@@ -312,6 +368,35 @@ def get_referral_keyboard():
         types.InlineKeyboardButton("💰 Мои бонусы", callback_data="show_referral_balance"),
         types.InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_main_menu")
     )
+    return keyboard
+
+def get_admin_config_management_keyboard():
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    keyboard.add(
+        types.InlineKeyboardButton("➕ Добавить новый конфиг", callback_data="admin_add_config"),
+        types.InlineKeyboardButton("📋 Просмотреть/Редактировать конфиги", callback_data="admin_list_configs"),
+        types.InlineKeyboardButton("⬅️ Назад в админку", callback_data="admin_panel_back")
+    )
+    return keyboard
+
+def get_admin_config_tariff_select_keyboard(action_prefix):
+    keyboard = types.InlineKeyboardMarkup(row_width=3)
+    keyboard.add(
+        types.InlineKeyboardButton("1 месяц", callback_data=f"{action_prefix}:1_month"),
+        types.InlineKeyboardButton("2 месяца", callback_data=f"{action_prefix}:2_month"),
+        types.InlineKeyboardButton("3 месяца", callback_data=f"{action_prefix}:3_month")
+    )
+    keyboard.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="admin_manage_configs"))
+    return keyboard
+
+def get_admin_config_actions_keyboard(config_id, is_active):
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    status_text = "Деактивировать" if is_active else "Активировать"
+    keyboard.add(
+        types.InlineKeyboardButton(status_text, callback_data=f"admin_toggle_config:{config_id}"),
+        types.InlineKeyboardButton("🗑 Удалить", callback_data=f"admin_delete_config:{config_id}")
+    )
+    keyboard.add(types.InlineKeyboardButton("⬅️ Назад к списку", callback_data="admin_list_configs"))
     return keyboard
 
 # --- ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ ---
@@ -335,7 +420,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 await bot.send_message(referrer_id, f"🎉 Ваш реферал @{message.from_user.username if message.from_user.username else message.from_user.full_name} зарегистрировался! Вам начислено {REFERRAL_BONUS_AMOUNT} руб. на баланс и {REFERRAL_BONUS_DAYS} дней к подписке.")
             except Exception as e:
                 logging.error(f"Не удалось отправить уведомление рефереру {referrer_id}: {e}")
-
 
     await message.answer(f"Привет, {message.from_user.full_name}! 👋\nДобро пожаловать в VPN Master Bot! Обеспечьте себе безопасный и быстрый интернет.",
                          reply_markup=get_main_menu_keyboard())
@@ -363,7 +447,7 @@ async def select_tariff(call: types.CallbackQuery, state: FSMContext):
 
     await state.update_data(selected_tariff=tariff, selected_price=price)
     
-    await call.message.edit_text(f"Для оплаты {price} руб. за тариф '{tariff.replace('_', ' ')}' переведите деньги на карту: `{CARD_NUMBER}`\n\n"
+    await call.message.edit_text(f"Для оплаты {price} руб. за тариф '{get_tariff_name(tariff)}' переведите деньги на карту: `{CARD_NUMBER}`\n\n"
                                  "После перевода **ОБЯЗАТЕЛЬНО** пришлите скриншот чека в следующем сообщении. Я проверю платеж и активирую подписку.",
                                  parse_mode="Markdown",
                                  reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("⬅️ Назад к тарифам", callback_data="buy_vpn")))
@@ -392,7 +476,7 @@ async def process_screenshot(message: types.Message, state: FSMContext):
             photo=screenshot_id,
             caption=f"🔔 Новый платеж ожидает подтверждения!\n\n"
                     f"Пользователь: @{message.from_user.username if message.from_user.username else message.from_user.id} (ID: {message.from_user.id})\n"
-                    f"Тариф: {tariff.replace('_', ' ')}\n"
+                    f"Тариф: {get_tariff_name(tariff)}\n"
                     f"Сумма: {price} руб.\n\n"
                     f"Проверьте скриншот и подтвердите/отклоните платеж.",
             reply_markup=get_admin_payment_keyboard(payment_id)
@@ -403,7 +487,6 @@ async def process_screenshot(message: types.Message, state: FSMContext):
                              reply_markup=get_main_menu_keyboard())
         await state.finish()
         return
-
 
     await message.answer("✅ Ваш скриншот получен и ожидает подтверждения администратором. Ожидайте уведомления!",
                          reply_markup=get_main_menu_keyboard())
@@ -418,35 +501,47 @@ async def admin_confirm_payment(call: types.CallbackQuery, state: FSMContext):
         user_id = payment[1]
         tariff = payment[3]
 
-        config_path = get_random_config_path(tariff)
-        if not config_path:
-            await call.message.answer(f"Ошибка: Не найден конфиг для тарифа {tariff}. Пожалуйста, добавьте конфиги в папку 'configs/'.")
+        active_configs = get_active_vpn_configs(tariff)
+        if not active_configs:
+            await call.message.answer(f"Ошибка: Нет активных конфигов для тарифа {get_tariff_name(tariff)}. Добавьте их через админку.")
             await call.answer()
             return
+
+        # Выбираем случайный активный конфиг
+        selected_config = random.choice(active_configs)
+        config_data_json = json.dumps(selected_config) # Сохраняем все данные конфига в подписке
 
         # Обновляем статус платежа в базе
         update_payment_status(payment_id, 'confirmed', call.from_user.id)
         # Добавляем/продлеваем подписку
-        add_subscription(user_id, tariff, config_path)
+        add_subscription(user_id, tariff, config_data_json)
 
         # Отправляем конфиг пользователю
         try:
-            with open(config_path, 'rb') as f:
-                await bot.send_document(user_id, f, caption=f"🎉 Платеж подтвержден! Ваша подписка на {tariff.replace('_', ' ')} активирована. Вот ваш VPN-конфиг:")
-            # Уведомляем админа об успешном подтверждении
+            caption_text = f"🎉 Платеж подтвержден! Ваша подписка на {get_tariff_name(tariff)} активирована.\n\n"
+            if selected_config['config_text']:
+                caption_text += f"Вот ваш VPN-конфиг:\n`{selected_config['config_text']}`\n\n"
+            if selected_config['config_url']:
+                caption_text += f"Ссылка для подписки/доступа: {selected_config['config_url']}\n\n"
+            caption_text += "Спасибо за использование!"
+            
+            if selected_config['config_image_id']:
+                await bot.send_photo(user_id, photo=selected_config['config_image_id'], caption=caption_text, parse_mode="Markdown")
+            else:
+                await bot.send_message(user_id, caption_text, parse_mode="Markdown")
+
             username_from_db = get_user(user_id)[2] if get_user(user_id) else "Неизвестный пользователь"
-            await call.message.edit_caption(caption=f"✅ Платеж пользователя @{username_from_db} (ID: {user_id}) за {tariff.replace('_', ' ')} подтвержден. Конфиг отправлен.",
+            await call.message.edit_caption(caption=f"✅ Платеж пользователя @{username_from_db} (ID: {user_id}) за {get_tariff_name(tariff)} подтвержден. Конфиг отправлен.",
                                            reply_markup=None)
             await call.answer("Платеж подтвержден и конфиг отправлен пользователю.", show_alert=True)
         except Exception as e:
-            logging.error(f"Не удалось отправить конфиг {config_path} пользователю {user_id}: {e}")
+            logging.error(f"Не удалось отправить конфиг пользователю {user_id}: {e}")
             username_from_db = get_user(user_id)[2] if get_user(user_id) else "Неизвестный пользователь"
             await call.message.edit_caption(caption=f"⚠️ Ошибка отправки конфига пользователю @{username_from_db} (ID: {user_id}). Платеж подтвержден, но конфиг не отправлен. Проверьте логи.",
                                            reply_markup=None)
             await call.answer("Произошла ошибка при отправке конфига.", show_alert=True)
     else:
         await call.answer("Этот платеж уже был обработан или не существует.", show_alert=True)
-        # Если кнопки все еще есть, удаляем их
         if call.message.reply_markup:
             await call.message.edit_reply_markup(reply_markup=None)
 
@@ -465,7 +560,7 @@ async def admin_reject_payment(call: types.CallbackQuery, state: FSMContext):
             logging.error(f"Не удалось уведомить пользователя {user_id} об отклонении платежа: {e}")
         
         username_from_db = get_user(user_id)[2] if get_user(user_id) else "Неизвестный пользователь"
-        await call.message.edit_caption(caption=f"❌ Платеж пользователя @{username_from_db} (ID: {user_id}) за {payment[3].replace('_', ' ')} отклонен.",
+        await call.message.edit_caption(caption=f"❌ Платеж пользователя @{username_from_db} (ID: {user_id}) за {get_tariff_name(payment[3])} отклонен.",
                                        reply_markup=None)
         await call.answer("Платеж отклонен.", show_alert=True)
     else:
@@ -484,23 +579,22 @@ async def my_cabinet(call: types.CallbackQuery):
     active_sub = get_active_subscription(call.from_user.id)
     if active_sub:
         end_date_str = active_sub[3]
-        # Проверяем формат даты, если это строка, парсим
         if isinstance(end_date_str, str):
             try:
                 end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S.%f")
             except ValueError:
                 end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
         else:
-            end_date = end_date_str # Если уже datetime object
+            end_date = end_date_str
 
         remaining_days = (end_date - datetime.datetime.now()).days
         if remaining_days < 0:
-            remaining_days = 0 # Не показываем отрицательные дни
+            remaining_days = 0
         
         message_text = f"Ваш личный кабинет:\n\n" \
                        f"🗓 Активная подписка до: `{end_date.strftime('%d.%m.%Y %H:%M')}`\n" \
                        f"Осталось: `{remaining_days} дней`\n" \
-                       f"Тариф: `{active_sub[4].replace('_', ' ')}`"
+                       f"Тариф: `{get_tariff_name(active_sub[4])}`"
     else:
         message_text = "Ваш личный кабинет:\n\nУ вас пока нет активных подписок. Купите VPN!"
 
@@ -511,12 +605,26 @@ async def my_cabinet(call: types.CallbackQuery):
 async def get_my_config(call: types.CallbackQuery):
     active_sub = get_active_subscription(call.from_user.id)
     if active_sub:
-        config_path = active_sub[5]
-        if config_path and os.path.exists(config_path):
-            with open(config_path, 'rb') as f:
-                await bot.send_document(call.from_user.id, f, caption="Ваш текущий VPN-конфиг:")
+        config_data_json = active_sub[5]
+        try:
+            selected_config = json.loads(config_data_json)
+        except json.JSONDecodeError:
+            await call.message.answer("К сожалению, данные вашего конфига повреждены. Свяжитесь с поддержкой.")
+            await call.answer()
+            return
+        
+        caption_text = f"Ваш текущий VPN-конфиг для тарифа {get_tariff_name(active_sub[4])}:\n\n"
+        if selected_config.get('config_text'):
+            caption_text += f"`{selected_config['config_text']}`\n\n"
+        if selected_config.get('config_url'):
+            caption_text += f"Ссылка для подписки/доступа: {selected_config['config_url']}\n\n"
+        caption_text += "Приятного использования!"
+        
+        if selected_config.get('config_image_id'):
+            await bot.send_photo(call.from_user.id, photo=selected_config['config_image_id'], caption=caption_text, parse_mode="Markdown")
         else:
-            await call.message.answer("К сожалению, ваш конфиг не найден. Пожалуйста, свяжитесь с поддержкой.")
+            await bot.send_message(call.from_user.id, caption_text, parse_mode="Markdown")
+
     else:
         await call.message.answer("У вас нет активных подписок. Купите VPN, чтобы получить конфиг!",
                                  reply_markup=get_purchase_keyboard())
@@ -538,7 +646,7 @@ async def show_my_subscriptions(call: types.CallbackQuery):
                 end_date = end_date_str
             
             status = "Активна" if end_date > datetime.datetime.now() else "Истекла"
-            message_text += f"- Тариф: `{sub[4].replace('_', ' ')}`\n" \
+            message_text += f"- Тариф: `{get_tariff_name(sub[4])}`\n" \
                             f"  До: `{end_date.strftime('%d.%m.%Y %H:%M')}` ({status})\n\n"
     else:
         message_text = "У вас пока нет оформленных подписок."
@@ -554,7 +662,7 @@ async def about_bot(call: types.CallbackQuery):
                    "1. Выбираете тариф и оплачиваете его переводом на карту.\n" \
                    "2. Отправляете скриншот чека об оплате.\n" \
                    "3. Администратор проверяет платеж и выдает вам VPN-конфиг.\n" \
-                   "4. Используйте конфиг в приложении (например, V2RayNG, Shadowrocket) для подключения к VPN.\n\n" \
+                   "4. Используйте полученные данные (текст, изображение, ссылка) для подключения к VPN.\n\n" \
                    "**Возникли вопросы?** Свяжитесь с поддержкой через раздел 'Поддержка'."
     await call.message.edit_text(message_text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
     await call.answer()
@@ -570,7 +678,6 @@ async def referral_system(call: types.CallbackQuery):
 async def show_referral_link(call: types.CallbackQuery):
     user = get_user(call.from_user.id)
     if user and user[4]: # user[4] - referral_code
-        # Проверяем, что username бота доступен
         bot_info = await bot.get_me()
         bot_username = bot_info.username
         referral_link = f"https://t.me/{bot_username}?start={user[4]}"
@@ -595,6 +702,12 @@ async def show_referral_balance(call: types.CallbackQuery):
 
 
 # --- АДМИН-ФУНКЦИИ ---
+@dp.callback_query_handler(text="admin_panel_back", user_id=ADMIN_ID)
+async def admin_panel_back(call: types.CallbackQuery, state: FSMContext):
+    await state.finish()
+    await call.message.edit_text("Добро пожаловать в админ-панель!", reply_markup=get_admin_menu_keyboard())
+    await call.answer()
+
 @dp.callback_query_handler(text="admin_check_payments", user_id=ADMIN_ID)
 async def admin_check_payments(call: types.CallbackQuery):
     pending_payments = get_pending_payments()
@@ -604,26 +717,24 @@ async def admin_check_payments(call: types.CallbackQuery):
         return
 
     for payment in pending_payments:
-        # payment = (id, user_id, amount, tariff, screenshot_id, status, created_at, confirmed_by, confirmed_at, username)
         payment_id = payment[0]
         user_id = payment[1]
         amount = payment[2]
         tariff = payment[3]
         screenshot_id = payment[4]
-        username = payment[9] if payment[9] else "N/A" # Имя пользователя из таблицы users
+        username = payment[9] if payment[9] else "N/A"
 
         await bot.send_photo(
             chat_id=call.from_user.id,
             photo=screenshot_id,
             caption=f"🔔 Новый платеж ожидает подтверждения!\n\n"
                     f"Пользователь: @{username} (ID: {user_id})\n"
-                    f"Тариф: {tariff.replace('_', ' ')}\n"
+                    f"Тариф: {get_tariff_name(tariff)}\n"
                     f"Сумма: {amount} руб.\n\n"
                     f"Проверьте скриншот и подтвердите/отклоните платеж.",
             reply_markup=get_admin_payment_keyboard(payment_id)
         )
     await call.answer("Отправлены все ожидающие платежи.")
-
 
 @dp.callback_query_handler(text="admin_broadcast", user_id=ADMIN_ID)
 async def admin_broadcast_start(call: types.CallbackQuery, state: FSMContext):
@@ -650,18 +761,174 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
                          reply_markup=get_admin_menu_keyboard())
     await state.finish()
 
-# @dp.callback_query_handler(text="admin_stats", user_id=ADMIN_ID)
-# async def admin_stats(call: types.CallbackQuery):
-#     await call.message.answer("Функция статистики пока находится в разработке.")
-#     await call.answer()
+# --- Управление конфигами ---
+@dp.callback_query_handler(text="admin_manage_configs", user_id=ADMIN_ID)
+async def admin_manage_configs(call: types.CallbackQuery):
+    await call.message.edit_text("Управление VPN-конфигами:", reply_markup=get_admin_config_management_keyboard())
+    await call.answer()
 
+@dp.callback_query_handler(text="admin_add_config", user_id=ADMIN_ID)
+async def admin_add_config_start(call: types.CallbackQuery):
+    await call.message.edit_text("Выберите тариф, для которого вы хотите добавить конфиг:",
+                                 reply_markup=get_admin_config_tariff_select_keyboard("admin_select_config_tariff_add"))
+    await call.answer()
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('admin_select_config_tariff_add:'), user_id=ADMIN_ID)
+async def admin_select_config_tariff_add(call: types.CallbackQuery, state: FSMContext):
+    tariff = call.data.split(':')[1]
+    await state.update_data(current_config_tariff=tariff)
+    await call.message.edit_text(f"Вы выбрали тариф: {get_tariff_name(tariff)}.\n\n"
+                                 "Теперь пришлите **текст конфига**. Если текста нет, напишите `-` (дефис).")
+    await AdminStates.waiting_for_config_text.set()
+    await call.answer()
+
+@dp.message_handler(state=AdminStates.waiting_for_config_text, user_id=ADMIN_ID)
+async def admin_get_config_text(message: types.Message, state: FSMContext):
+    config_text = message.text
+    if config_text == "-":
+        config_text = None
+    
+    await state.update_data(current_config_text=config_text)
+    await message.answer("Отлично! Теперь пришлите **изображение-QR-код** для конфига (если есть) или **ссылку на подписку/конфиг**. "
+                         "Если изображения нет, а есть только ссылка - просто отправьте ссылку. Если ничего нет - напишите `-` (дефис).")
+    await AdminStates.waiting_for_config_image_or_url.set()
+
+@dp.message_handler(content_types=[types.ContentType.PHOTO, types.ContentType.TEXT], state=AdminStates.waiting_for_config_image_or_url, user_id=ADMIN_ID)
+async def admin_get_config_image_or_url(message: types.Message, state: FSMContext):
+    config_image_id = None
+    config_url = None
+    
+    if message.content_type == types.ContentType.PHOTO:
+        config_image_id = message.photo[-1].file_id
+        await state.update_data(current_config_image_id=config_image_id)
+        await message.answer("Изображение получено. Теперь пришлите **ссылку на подписку/конфиг** (если есть). Если ссылки нет - напишите `-` (дефис).")
+        await AdminStates.waiting_for_config_url.set()
+    elif message.content_type == types.ContentType.TEXT:
+        if message.text == "-":
+            # Ни изображения, ни ссылки
+            user_data = await state.get_data()
+            tariff = user_data.get("current_config_tariff")
+            config_text = user_data.get("current_config_text")
+            
+            add_vpn_config(tariff, config_text=config_text)
+            await message.answer(f"Новый конфиг для тарифа {get_tariff_name(tariff)} успешно добавлен (только текст).",
+                                 reply_markup=get_admin_config_management_keyboard())
+            await state.finish()
+        else: # Пользователь прислал ссылку вместо изображения
+            config_url = message.text
+            user_data = await state.get_data()
+            tariff = user_data.get("current_config_tariff")
+            config_text = user_data.get("current_config_text")
+
+            add_vpn_config(tariff, config_text=config_text, config_url=config_url)
+            await message.answer(f"Новый конфиг для тарифа {get_tariff_name(tariff)} успешно добавлен (текст и ссылка).",
+                                 reply_markup=get_admin_config_management_keyboard())
+            await state.finish()
+    else:
+        await message.answer("Пожалуйста, пришлите изображение, ссылку или `-` (дефис).")
+
+@dp.message_handler(state=AdminStates.waiting_for_config_url, user_id=ADMIN_ID)
+async def admin_get_config_url(message: types.Message, state: FSMContext):
+    config_url = None
+    if message.text != "-":
+        config_url = message.text
+    
+    user_data = await state.get_data()
+    tariff = user_data.get("current_config_tariff")
+    config_text = user_data.get("current_config_text")
+    config_image_id = user_data.get("current_config_image_id")
+
+    add_vpn_config(tariff, config_text=config_text, config_image_id=config_image_id, config_url=config_url)
+    await message.answer(f"Новый конфиг для тарифа {get_tariff_name(tariff)} успешно добавлен.",
+                         reply_markup=get_admin_config_management_keyboard())
+    await state.finish()
+
+@dp.callback_query_handler(text="admin_list_configs", user_id=ADMIN_ID)
+async def admin_list_configs(call: types.CallbackQuery):
+    configs = get_all_vpn_configs()
+    if not configs:
+        await call.message.edit_text("Пока нет добавленных конфигов.", reply_markup=get_admin_config_management_keyboard())
+        await call.answer()
+        return
+
+    message_text = "Список конфигов:\n\n"
+    for config in configs:
+        config_id, tariff, config_text, config_image_id, config_url, is_active = config
+        status = "✅ Активен" if is_active else "❌ Неактивен"
+        message_text += f"ID: `{config_id}` | Тариф: `{get_tariff_name(tariff)}` | Статус: {status}\n"
+        if config_text:
+            message_text += f"  Текст: `{'...' + config_text[-20:] if len(config_text) > 20 else config_text}`\n"
+        if config_url:
+            message_text += f"  URL: `{config_url}`\n"
+        if config_image_id:
+            message_text += f"  Изображение: Есть\n"
+        message_text += f"  /view_config_{config_id}\n\n" # Быстрая ссылка для просмотра/редактирования
+
+    await call.message.edit_text(message_text, parse_mode="Markdown", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("⬅️ Назад", callback_data="admin_manage_configs")))
+    await call.answer()
+
+@dp.message_handler(commands=lambda msg: msg.startswith('view_config_'), user_id=ADMIN_ID)
+async def admin_view_single_config(message: types.Message):
+    config_id = int(message.text.split('_')[2])
+    config = get_vpn_config_by_id(config_id)
+
+    if not config:
+        await message.answer("Конфиг не найден.")
+        return
+    
+    config_id, tariff, config_text, config_image_id, config_url, is_active = config
+    
+    status_text = "✅ Активен" if is_active else "❌ Неактивен"
+    message_text = f"**Детали конфига (ID: `{config_id}`)**\n\n" \
+                   f"Тариф: `{get_tariff_name(tariff)}`\n" \
+                   f"Статус: {status_text}\n"
+
+    if config_text:
+        message_text += f"\n**Текст конфига:**\n`{config_text}`\n"
+    if config_url:
+        message_text += f"\n**Ссылка:**\n`{config_url}`\n"
+    
+    if config_image_id:
+        await bot.send_photo(message.from_user.id, photo=config_image_id, caption=message_text, parse_mode="Markdown",
+                             reply_markup=get_admin_config_actions_keyboard(config_id, is_active))
+    else:
+        await message.answer(message_text, parse_mode="Markdown",
+                             reply_markup=get_admin_config_actions_keyboard(config_id, is_active))
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('admin_toggle_config:'), user_id=ADMIN_ID)
+async def admin_toggle_config(call: types.CallbackQuery):
+    config_id = int(call.data.split(':')[1])
+    config = get_vpn_config_by_id(config_id)
+    if config:
+        new_status = toggle_vpn_config_status(config_id, config[5]) # config[5] - is_active
+        await call.message.edit_reply_markup(reply_markup=get_admin_config_actions_keyboard(config_id, new_status))
+        await call.answer(f"Статус конфига изменен на {'активный' if new_status else 'неактивный'}.", show_alert=True)
+        # Обновляем сообщение с деталями конфига
+        config_id, tariff, config_text, config_image_id, config_url, is_active = get_vpn_config_by_id(config_id)
+        status_text = "✅ Активен" if is_active else "❌ Неактивен"
+        message_text = f"**Детали конфига (ID: `{config_id}`)**\n\n" \
+                       f"Тариф: `{get_tariff_name(tariff)}`\n" \
+                       f"Статус: {status_text}\n"
+        if config_text: message_text += f"\n**Текст конфига:**\n`{config_text}`\n"
+        if config_url: message_text += f"\n**Ссылка:**\n`{config_url}`\n"
+        if call.message.caption: # Если это было фото, меняем caption
+            await call.message.edit_caption(caption=message_text, parse_mode="Markdown", reply_markup=get_admin_config_actions_keyboard(config_id, is_active))
+        else: # Если обычное сообщение
+            await call.message.edit_text(message_text, parse_mode="Markdown", reply_markup=get_admin_config_actions_keyboard(config_id, is_active))
+    else:
+        await call.answer("Конфиг не найден.", show_alert=True)
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('admin_delete_config:'), user_id=ADMIN_ID)
+async def admin_delete_config(call: types.CallbackQuery):
+    config_id = int(call.data.split(':')[1])
+    delete_vpn_config(config_id)
+    await call.message.edit_text(f"Конфиг с ID `{config_id}` удален.", parse_mode="Markdown", reply_markup=get_admin_config_management_keyboard())
+    await call.answer("Конфиг удален.", show_alert=True)
 
 # --- ЗАПУСК БОТА ---
-if __name__ == '__main__':
+async def on_startup(dp):
     init_db()
-    # Создаем папку для конфигов, если ее нет
-    if not os.path.exists(CONFIGS_FOLDER):
-        os.makedirs(CONFIGS_FOLDER)
-        print(f"Папка '{CONFIGS_FOLDER}' создана. Пожалуйста, добавьте ваши VPN-конфиги в эту папку.")
-    
-    executor.start_polling(dp, skip_updates=True)
+    logging.info("Database initialized.")
+
+if __name__ == '__main__':
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)
