@@ -1,39 +1,92 @@
 #!/bin/bash
-echo "Установка Telegram бота для VPN..."
 
-# Обновление системы и установка зависимостей
-apt update && apt install -y python3-pip git nginx certbot python3-certbot-nginx
+# Скрипт для автоматической установки и запуска Telegram VPN бота на Ubuntu 24.04
 
-# Клонирование репозитория
-git clone https://github.com/PavloMakaro/Vpnbot /root/vpn-bot
-cd / almighty/vpn-bot
+# --- 1. Обновление системы и установка зависимостей ---
+echo "--- Обновление системы и установка необходимых пакетов ---"
+sudo apt update
+sudo apt install -y python3 python3-pip git screen # Добавляем screen для возможности ручного запуска в сессии
 
-# Установка Python зависимостей
-pip3 install -r requirements.txt
+# --- 2. Клонирование репозитория (если его еще нет) ---
+echo "--- Клонирование репозитория с GitHub ---"
+BOT_DIR="/opt/vpn_bot" # Директория для бота
+REPO_URL="https://github.com/PavloMakaro/Vpnbot"
+SCRIPT_NAME="ai_studio_code.py" # Имя вашего файла бота
 
-# Запуск бота
-chmod +x bot.py
-nohup python3 bot.py &
+if [ ! -d "$BOT_DIR" ]; then
+    sudo git clone "$REPO_URL" "$BOT_DIR"
+    echo "Репозиторий клонирован в $BOT_DIR"
+else
+    echo "Директория $BOT_DIR уже существует. Обновляем код..."
+    sudo git -C "$BOT_DIR" pull
+    echo "Код обновлен."
+fi
 
-# Настройка SSL и Nginx
-certbot --nginx -d Vpn.play2go.cloud --non-interactive --agree-tos --email your_email@example.com
-cat > /etc/nginx/sites-available/vpn << EOL
-server {
-    listen 443 ssl;
-    server_name Vpn.play2go.cloud;
-    ssl_certificate /etc/letsencrypt/live/Vpn.play2go.cloud/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/Vpn.play2go.cloud/privkey.pem;
-    location /webhook {
-        proxy_pass http://localhost:8443;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-    }
-}
+# --- 3. Переход в директорию бота и установка зависимостей в виртуальное окружение ---
+echo "--- Установка зависимостей в виртуальное окружение ---"
+cd "$BOT_DIR" || { echo "Не удалось перейти в директорию бота. Выход."; exit 1; }
+
+# Создаем виртуальное окружение, если его нет
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    echo "Виртуальное окружение 'venv' создано."
+fi
+
+# Активируем виртуальное окружение и устанавливаем aiogram
+source venv/bin/activate
+pip install aiogram
+deactivate # Деактивируем после установки
+
+echo "Зависимости установлены."
+
+# --- 4. Создание папки для конфигов, если ее нет ---
+echo "--- Создание папки 'configs' ---"
+if [ ! -d "configs" ]; then
+    mkdir configs
+    echo "Папка 'configs' создана. Пожалуйста, вручную загрузите ваши VPN-конфиги в $BOT_DIR/configs"
+else
+    echo "Папка 'configs' уже существует."
+fi
+
+# --- 5. Настройка Systemd сервиса для запуска бота в фоне ---
+echo "--- Настройка Systemd сервиса ---"
+SERVICE_FILE="/etc/systemd/system/vpn_bot.service"
+USERNAME=$(whoami) # Получаем текущего пользователя (root в вашем случае)
+
+sudo bash -c "cat > $SERVICE_FILE" <<EOL
+[Unit]
+Description=Telegram VPN Bot
+After=network.target
+
+[Service]
+User=$USERNAME
+WorkingDirectory=$BOT_DIR
+ExecStart=$BOT_DIR/venv/bin/python $SCRIPT_NAME # Запускаем через Python из виртуального окружения
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
 EOL
-ln -s /etc/nginx/sites-available/vpn /etc/nginx/sites-enabled/
-nginx -t && systemctl restart nginx
 
-# Настройка автозапуска
-(crontab -l 2>/dev/null; echo "@reboot nohup python3 /root/vpn-bot/bot.py &") | crontab -
+echo "Файл сервиса Systemd создан: $SERVICE_FILE"
 
-echo "Your virtual machine “Vpn” on the server vm.play2go.cloud has been successfully reinstalled."2
+# --- 6. Запуск и активация Systemd сервиса ---
+echo "--- Запуск и активация Systemd сервиса ---"
+sudo systemctl daemon-reload
+sudo systemctl enable vpn_bot
+sudo systemctl start vpn_bot
+
+echo "--- Проверка статуса бота ---"
+sudo systemctl status vpn_bot
+
+echo "--- Установка завершена! ---"
+echo "Бот должен быть запущен в фоновом режиме."
+echo "Не забудьте загрузить ваши VPN-конфиги в папку '$BOT_DIR/configs'!"
+echo "Для просмотра логов бота: sudo journalctl -u vpn_bot -f"
+echo "Для обновления бота (после изменений на GitHub):"
+echo "  cd $BOT_DIR"
+echo "  sudo git pull"
+echo "  sudo systemctl restart vpn_bot"
+echo ""
+echo "--- Рекомендуется сменить пароль root: 'passwd' ---"
