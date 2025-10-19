@@ -7,7 +7,7 @@ import threading
 import hashlib # Для генерации стабильного ID для Stars платежей
 
 # --- КОНСТАНТЫ ---
-TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
+TOKEN = '8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8'
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178 # Ваш ID, который вы предоставили
 CARD_NUMBER = '2204320690808227'
