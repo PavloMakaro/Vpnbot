@@ -6,7 +6,7 @@ import datetime
 import threading
 
 # --- КОНСТАНТЫ ---
-TOKEN = '8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8'
+TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178 # Ваш ID, который вы предоставили
 CARD_NUMBER = '2204320690808227'
@@ -98,7 +98,7 @@ def buy_vpn_keyboard():
         types.InlineKeyboardButton(f"1 месяц ({PRICE_MONTH} ₽)", callback_data="choose_period_1_month"),
         types.InlineKeyboardButton(f"2 месяца ({PRICE_2_MONTHS} ₽)", callback_data="choose_period_2_months"),
         types.InlineKeyboardButton(f"3 месяца ({PRICE_3_MONTHS} ₽)", callback_data="choose_period_3_months"),
-        types.InlineKeyboardButton("Назад", callback_data="main_menu")
+        types.InlineKeyboardButton("Назад", callback_data="buy_vpn")
     )
     return markup
 
@@ -283,13 +283,14 @@ def callback_handler(call):
             if end_date > datetime.datetime.now():
                 # Проверяем, есть ли конфиги
                 available_configs = []
+                # Ищем конфиги, которые соответствуют периоду подписки или подходят для любого периода
+                # Здесь упрощено: выдаем любой доступный конфиг
                 for period, configs_list in configs_db.items():
                     available_configs.extend(configs_list)
 
                 if available_configs:
                     # Просто выдаем первый попавшийся конфиг, для простоты
-                    # В реальной системе можно выдавать уникальный или по запросу
-                    config = available_configs[0]
+                    config = available_configs[0] # В реальной системе можно выдавать уникальный
                     bot.send_message(call.message.chat.id, "Вот ваш VPN конфиг:")
                     if config.get('image'):
                         bot.send_photo(call.message.chat.id, config['image'])
