@@ -44,9 +44,10 @@ echo "Создание виртуального окружения..."
 python3 -m venv venv
 
 # Установка aiogram
-echo "Установка необходимых библиотек (aiogram) в venv..."
+echo "Установка совместимой версии aiogram (V2.*) в venv..."
 source venv/bin/activate
-pip install aiogram
+# !!! ИСПРАВЛЕНИЕ: Установка aiogram V2 для поддержки 'executor' !!!
+pip install aiogram==2.*
 
 if [ $? -ne 0 ]; then
     echo "❌ Ошибка: Не удалось установить aiogram. Проверьте права доступа."
@@ -65,7 +66,7 @@ if [ $? -eq 0 ]; then
     screen -X -S "$SCREEN_NAME" quit
 fi
 
-# Запуск бота
+# Запуск бота: активируем venv, запускаем python3, и все это в screen
 screen -dmS "$SCREEN_NAME" bash -c "source $INSTALL_DIR/venv/bin/activate && python3 $BOT_FILE"
 
 echo "=================================================="
