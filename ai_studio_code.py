@@ -11,7 +11,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
 
 # --- КОНФИГУРАЦИЯ БОТА ---
-BOT_TOKEN = "8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY"
+BOT_TOKEN = "8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8"
 ADMIN_USERNAME = "@Gl1ch555"
 ADMIN_ID = 8320218178  # Ваш фактический Telegram ID
 CARD_NUMBER = "2204320690808227" # Номер карты для перевода (Ozon Bank Makarov Pavel Alexandrovich)
