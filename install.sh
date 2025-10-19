@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # --- КОНФИГУРАЦИЯ ---
-# Базовая ссылка на репозиторий для скачивания файлов
+# Базовая ссылка на репозиторий
 REPO_BASE_URL="https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main"
-# !!! ИСПРАВЛЕНО: Имя файла должно быть ai_studio_code.py, как в репозитории !!!
+# Имя файла бота в вашем репозитории
 BOT_FILE="ai_studio_code.py" 
-# Директория для установки
+# Директория для установки (будет удалена и создана заново при каждом запуске)
 INSTALL_DIR="/root/vpnbot_data"
 # Имя сессии screen
 SCREEN_NAME="vpn_bot"
@@ -16,15 +16,17 @@ echo "=================================================="
 
 # 1. Проверка системных пакетов и установка
 echo "Обновление списка пакетов и установка git, screen, wget, python3-full..."
+# Устанавливаем необходимые пакеты
 sudo apt update
 sudo apt install -y python3-full python3-venv git screen wget
 
 # 2. Создание директории и переход в нее
 if [ -d "$INSTALL_DIR" ]; then
-    echo "⚠️ Директория $INSTALL_DIR уже существует. Удаляем ее для чистой установки..."
+    echo "⚠️ Директория $INSTALL_DIR существует. Удаляем для чистой установки..."
     rm -rf "$INSTALL_DIR"
 fi
-echo "Создание директории $INSTALL_DIR..."
+
+echo "Создание новой директории $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR" || { echo "❌ Ошибка: Не удалось перейти в директорию $INSTALL_DIR. Выход."; exit 1; }
 
@@ -38,10 +40,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # 4. Создание и активация виртуального окружения (venv)
-if [ ! -d "venv" ]; then
-    echo "Создание виртуального окружения..."
-    python3 -m venv venv
-fi
+echo "Создание виртуального окружения..."
+python3 -m venv venv
 
 # Установка aiogram
 echo "Установка необходимых библиотек (aiogram) в venv..."
@@ -61,10 +61,11 @@ echo "Запуск Telegram-бота ($BOT_FILE) в фоновом режиме 
 screen -ls | grep -q "$SCREEN_NAME"
 if [ $? -eq 0 ]; then
     echo "ℹ️ Сессия screen '$SCREEN_NAME' уже запущена. Останавливаем старую..."
+    # Отправка команды "quit" в старую сессию screen
     screen -X -S "$SCREEN_NAME" quit
 fi
 
-# Запуск бота: активируем venv, запускаем python3, и все это в screen
+# Запуск бота
 screen -dmS "$SCREEN_NAME" bash -c "source $INSTALL_DIR/venv/bin/activate && python3 $BOT_FILE"
 
 echo "=================================================="
