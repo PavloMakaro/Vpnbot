@@ -1,92 +1,70 @@
 #!/bin/bash
 
-# Скрипт для автоматической установки и запуска Telegram VPN бота на Ubuntu 24.04
+# --- КОНФИГУРАЦИЯ ---
+REPO_URL="https://github.com/PavloMakaro/Vpnbot.git"
+BOT_DIR="/opt/vpn_bot"
+BOT_SERVICE_NAME="vpn_bot"
+BOT_SCRIPT_NAME="ai_studio_code.py"
+VM_USER="root" # Имя пользователя, под которым запускается VM (root в вашем случае)
+PYTHON_EXECUTABLE="python3"
 
-# --- 1. Обновление системы и установка зависимостей ---
-echo "--- Обновление системы и установка необходимых пакетов ---"
-sudo apt update
-sudo apt install -y python3 python3-pip git screen # Добавляем screen для возможности ручного запуска в сессии
+# --- СООБЩЕНИЯ ---
+echo "--- Запуск автоматической установки VPN Telegram Bot ---"
 
-# --- 2. Клонирование репозитория (если его еще нет) ---
-echo "--- Клонирование репозитория с GitHub ---"
-BOT_DIR="/opt/vpn_bot" # Директория для бота
-REPO_URL="https://github.com/PavloMakaro/Vpnbot"
-SCRIPT_NAME="ai_studio_code.py" # Имя вашего файла бота
+# --- ШАГ 1: Обновление системы и установка необходимых пакетов ---
+echo "Обновление списка пакетов и установка Git, Python3, pip..."
+sudo apt update -y
+sudo apt install git "$PYTHON_EXECUTABLE" "$PYTHON_EXECUTABLE"-venv "$PYTHON_EXECUTABLE"-pip -y || { echo "Ошибка установки системных пакетов. Выход."; exit 1; }
 
-if [ ! -d "$BOT_DIR" ]; then
-    sudo git clone "$REPO_URL" "$BOT_DIR"
-    echo "Репозиторий клонирован в $BOT_DIR"
-else
-    echo "Директория $BOT_DIR уже существует. Обновляем код..."
-    sudo git -C "$BOT_DIR" pull
-    echo "Код обновлен."
+# --- ШАГ 2: Клонирование репозитория в указанную директорию ---
+echo "Клонирование репозитория $REPO_URL в $BOT_DIR..."
+if [ -d "$BOT_DIR" ]; then
+    echo "Директория $BOT_DIR уже существует. Удаляем ее для чистой установки..."
+    sudo rm -rf "$BOT_DIR" || { echo "Ошибка удаления старой директории. Выход."; exit 1; }
 fi
+sudo git clone "$REPO_URL" "$BOT_DIR" || { echo "Ошибка клонирования репозитория. Выход."; exit 1; }
+echo "Репозиторий успешно клонирован."
 
-# --- 3. Переход в директорию бота и установка зависимостей в виртуальное окружение ---
-echo "--- Установка зависимостей в виртуальное окружение ---"
-cd "$BOT_DIR" || { echo "Не удалось перейти в директорию бота. Выход."; exit 1; }
+# --- ШАГ 3: Создание и активация виртуального окружения ---
+echo "Создание виртуального окружения..."
+sudo "$PYTHON_EXECUTABLE" -m venv "$BOT_DIR/venv" || { echo "Ошибка создания виртуального окружения. Выход."; exit 1; }
 
-# Создаем виртуальное окружение, если его нет
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-    echo "Виртуальное окружение 'venv' создано."
-fi
+# --- ШАГ 4: Установка зависимостей в виртуальное окружение ---
+echo "Установка зависимостей Python (aiogram)..."
+sudo "$BOT_DIR/venv/bin/pip" install aiogram || { echo "Ошибка установки aiogram. Выход."; exit 1; }
 
-# Активируем виртуальное окружение и устанавливаем aiogram
-source venv/bin/activate
-pip install aiogram
-deactivate # Деактивируем после установки
+# --- ШАГ 5: Создание папки для конфигов VPN ---
+echo "Создание папки для конфигов VPN: $BOT_DIR/configs"
+sudo mkdir -p "$BOT_DIR/configs" || { echo "Ошибка создания папки configs. Выход."; exit 1; }
+echo "ПАПКА ДЛЯ КОНФИГОВ СОЗДАНА. НЕ ЗАБУДЬТЕ ВРУЧНУЮ ЗАГРУЗИТЬ В НЕЕ ВАШИ .conf ФАЙЛЫ!"
 
-echo "Зависимости установлены."
-
-# --- 4. Создание папки для конфигов, если ее нет ---
-echo "--- Создание папки 'configs' ---"
-if [ ! -d "configs" ]; then
-    mkdir configs
-    echo "Папка 'configs' создана. Пожалуйста, вручную загрузите ваши VPN-конфиги в $BOT_DIR/configs"
-else
-    echo "Папка 'configs' уже существует."
-fi
-
-# --- 5. Настройка Systemd сервиса для запуска бота в фоне ---
-echo "--- Настройка Systemd сервиса ---"
-SERVICE_FILE="/etc/systemd/system/vpn_bot.service"
-USERNAME=$(whoami) # Получаем текущего пользователя (root в вашем случае)
-
-sudo bash -c "cat > $SERVICE_FILE" <<EOL
+# --- ШАГ 6: Создание Systemd сервиса ---
+echo "Создание Systemd сервиса для бота..."
+SERVICE_FILE="/etc/systemd/system/$BOT_SERVICE_NAME.service"
+sudo bash -c "cat > $SERVICE_FILE" <<EOF
 [Unit]
 Description=Telegram VPN Bot
 After=network.target
 
 [Service]
-User=$USERNAME
+User=$VM_USER
 WorkingDirectory=$BOT_DIR
-ExecStart=$BOT_DIR/venv/bin/python $SCRIPT_NAME # Запускаем через Python из виртуального окружения
+ExecStart=$BOT_DIR/venv/bin/$PYTHON_EXECUTABLE $BOT_SCRIPT_NAME
 Restart=on-failure
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-EOL
+EOF
 
-echo "Файл сервиса Systemd создан: $SERVICE_FILE"
-
-# --- 6. Запуск и активация Systemd сервиса ---
-echo "--- Запуск и активация Systemd сервиса ---"
-sudo systemctl daemon-reload
-sudo systemctl enable vpn_bot
-sudo systemctl start vpn_bot
-
-echo "--- Проверка статуса бота ---"
-sudo systemctl status vpn_bot
+# --- ШАГ 7: Перезагрузка Systemd, включение и запуск сервиса ---
+echo "Перезагрузка Systemd, включение и запуск сервиса..."
+sudo systemctl daemon-reload || { echo "Ошибка daemon-reload. Выход."; exit 1; }
+sudo systemctl enable "$BOT_SERVICE_NAME" || { echo "Ошибка enable сервиса. Выход."; exit 1; }
+sudo systemctl start "$BOT_SERVICE_NAME" || { echo "Ошибка запуска сервиса. Выход."; exit 1; }
 
 echo "--- Установка завершена! ---"
-echo "Бот должен быть запущен в фоновом режиме."
-echo "Не забудьте загрузить ваши VPN-конфиги в папку '$BOT_DIR/configs'!"
-echo "Для просмотра логов бота: sudo journalctl -u vpn_bot -f"
-echo "Для обновления бота (после изменений на GitHub):"
-echo "  cd $BOT_DIR"
-echo "  sudo git pull"
-echo "  sudo systemctl restart vpn_bot"
-echo ""
-echo "--- Рекомендуется сменить пароль root: 'passwd' ---"
+echo "Бот запущен. Проверьте его статус командой: sudo systemctl status $BOT_SERVICE_NAME"
+echo "Для просмотра логов: sudo journalctl -u $BOT_SERVICE_NAME -f"
+echo "НЕ ЗАБУДЬТЕ ЗАГРУЗИТЬ ВАШИ VPN-КОНФИГИ В ДИРЕКТОРИЮ $BOT_DIR/configs НА VM!"
+echo "После загрузки конфигов перезапустите бота: sudo systemctl restart $BOT_SERVICE_NAME"
