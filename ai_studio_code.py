@@ -1,13 +1,12 @@
+import telebot
+from telebot import types
 import logging
 import json
 import time
-from aiogram import Bot, Dispatcher, types, executor
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
+import os
 
 # --- КОНСТАНТЫ ---
-# !!! НОВЫЙ ТОКЕН, ПРЕДОСТАВЛЕННЫЙ ПОЛЬЗОВАТЕЛЕМ !!!
+# НОВЫЙ ТОКЕН
 BOT_TOKEN = "8217097426:AAEXU3BJ55Bkx-cfOEtRTxkPaOYC1zvRfO8" 
 # ID администратора (ваш ID)
 ADMIN_ID = 8320218178 
@@ -33,34 +32,19 @@ REFERRAL_BONUS_DAYS = 7  # дни подписки
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-
-# --- FSM (Finite State Machine) для пошаговых действий ---
-class Payment(StatesGroup):
-    """Состояния для процесса оплаты"""
-    waiting_for_screenshot = State()
-    waiting_for_admin_confirmation = State()
-    
-class AdminConfig(StatesGroup):
-    """Состояния для добавления/удаления конфигов в админке"""
-    waiting_for_config_link = State()
-    waiting_for_config_code = State()
-    waiting_for_config_desc = State()
-    waiting_for_config_action = State() # Для указания, какой именно конфиг добавляем/удаляем
+bot = telebot.TeleBot(BOT_TOKEN)
 
 # --- УТИЛИТЫ ДЛЯ РАБОТЫ С DB ---
 def load_db():
     """Загрузка данных из JSON файла"""
     try:
-        with open(DB_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {"users": {}, "configs": {}}
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {"users": {}, "configs": {}, "pending_payments": {}}
     except json.JSONDecodeError:
         logging.error("Ошибка декодирования JSON в файле DB. Создан пустой шаблон.")
-        return {"users": {}, "configs": {}}
+        return {"users": {}, "configs": {}, "pending_payments": {}}
 
 def save_db(data):
     """Сохранение данных в JSON файл"""
@@ -77,10 +61,12 @@ def get_user(user_id):
             "referral_code": user_id_str,
             "referred_by": None,
             "balance": 0,
-            "payment_pending": False,
             "referrals_count": 0,
-            "last_config_type": None, # Последний купленный тариф
+            "last_config_type": None, 
+            "username": None
         }
+        if user_id == ADMIN_ID:
+             db["users"][user_id_str]["username"] = SUPPORT_USERNAME.strip('@')
         save_db(db)
     return db["users"][user_id_str]
 
@@ -89,7 +75,7 @@ def update_user(user_id, **kwargs):
     db = load_db()
     user_id_str = str(user_id)
     if user_id_str not in db["users"]:
-        get_user(user_id) # Создаем, если нет
+        get_user(user_id)
     db["users"][user_id_str].update(kwargs)
     save_db(db)
 
@@ -103,7 +89,6 @@ def add_subscription(user_id, duration_seconds):
     user = get_user(user_id)
     current_end = user["subscription_end"]
     
-    # Если подписка еще активна, добавляем к текущему концу, иначе к текущему моменту
     start_time = max(time.time(), current_end)
     new_end = start_time + duration_seconds
     
@@ -118,6 +103,14 @@ def get_main_keyboard():
     keyboard.row("❓ Поддержка", "🎁 Реферальная система")
     return keyboard
 
+def get_admin_main_keyboard():
+    """Основная админ-клавиатура (Reply)"""
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.row("✅ Неподтвержденные платежи")
+    keyboard.row("🛠️ Управление конфигами")
+    keyboard.row("🔙 Выйти из админки")
+    return keyboard
+
 def get_buy_options_keyboard():
     """Клавиатура с тарифами (Inline)"""
     keyboard = types.InlineKeyboardMarkup(row_width=1)
@@ -130,30 +123,9 @@ def get_buy_options_keyboard():
 def get_profile_keyboard(user_id):
     """Клавиатура личного кабинета (Inline)"""
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    
-    # Кнопка запроса конфига активна, только если есть активная подписка
     if check_subscription(user_id):
         keyboard.add(types.InlineKeyboardButton("🔑 Запросить конфиг", callback_data="get_config"))
-        
     keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
-    return keyboard
-
-def get_referral_keyboard(user_id):
-    """Клавиатура реферальной системы (Inline)"""
-    user = get_user(user_id)
-    keyboard = types.InlineKeyboardMarkup(row_width=1)
-    
-    referral_link = f"https://t.me/{bot.me.username}?start={user['referral_code']}"
-    keyboard.add(types.InlineKeyboardButton("🔗 Моя реферальная ссылка", url=referral_link))
-    keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
-    return keyboard
-
-def get_admin_main_keyboard():
-    """Основная админ-клавиатура (Reply)"""
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row("✅ Неподтвержденные платежи")
-    keyboard.row("🛠️ Управление конфигами")
-    keyboard.row("🔙 Выйти из админки")
     return keyboard
 
 def get_admin_config_menu_keyboard():
@@ -161,7 +133,6 @@ def get_admin_config_menu_keyboard():
     db = load_db()
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     
-    # Кнопки для добавления/изменения конфигов
     for key, data in PRICES.items():
         days = data['days']
         status = "✅ Есть" if key in db["configs"] else "❌ Нет"
@@ -172,36 +143,43 @@ def get_admin_config_menu_keyboard():
     return keyboard
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ---
+# --- ОБРАБОТЧИКИ СОСТОЯНИЙ (СТЕПЫ ДЛЯ TELEBOT) ---
 
-@dp.message_handler(commands=['start'], state='*')
-async def send_welcome(message: types.Message):
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
     """Обработчик команды /start"""
     user_id = message.from_user.id
     
+    # Обновление username пользователя
+    username = message.from_user.username
+    if username:
+        update_user(user_id, username=username)
+
     # Проверка на реферальную ссылку
-    if message.get_args():
-        referred_by_id = message.get_args()
+    if message.text.startswith('/start '):
+        referred_by_id = message.text.split(' ')[1]
         
-        # Только если пользователь новый и не сам себя пригласил
         user = get_user(user_id)
         if user["referred_by"] is None and referred_by_id != str(user_id):
             referrer = get_user(referred_by_id)
             if referrer:
                 # Начисление бонуса рефереру
-                update_user(referred_by_id, 
-                            balance=referrer["balance"] + REFERRAL_BONUS_AMOUNT,
-                            subscription_end=add_subscription(referred_by_id, REFERRAL_BONUS_DAYS * 24 * 3600),
-                            referrals_count=referrer["referrals_count"] + 1)
+                new_balance = referrer["balance"] + REFERRAL_BONUS_AMOUNT
+                new_end_time = add_subscription(referred_by_id, REFERRAL_BONUS_DAYS * 24 * 3600)
+                new_referrals = referrer["referrals_count"] + 1
                 
-                # Запись в базу приглашенного
+                update_user(referred_by_id, 
+                            balance=new_balance,
+                            referrals_count=new_referrals)
+                
                 update_user(user_id, referred_by=referred_by_id)
                 
-                await bot.send_message(
+                bot.send_message(
                     referred_by_id,
-                    f"🎉 **Отличная новость!** Пользователь @{message.from_user.username or user_id} "
+                    f"🎉 **Отличная новость!** Пользователь @{username or user_id} "
                     f"зарегистрировался по вашей ссылке!\n"
-                    f"Вам начислено **{REFERRAL_BONUS_AMOUNT} ₽** на баланс и **{REFERRAL_BONUS_DAYS} дней** подписки!",
+                    f"Вам начислено **{REFERRAL_BONUS_AMOUNT} ₽** на баланс и **{REFERRAL_BONUS_DAYS} дней** подписки "
+                    f"(до {time.strftime('%d.%m.%Y', time.localtime(new_end_time))})!",
                     parse_mode="Markdown"
                 )
 
@@ -212,48 +190,42 @@ async def send_welcome(message: types.Message):
         f"Выбери интересующий пункт меню ниже."
     )
     
-    await message.answer(text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+    bot.send_message(user_id, text, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 
-@dp.message_handler(commands=['admin'], state='*')
-async def admin_start(message: types.Message):
+@bot.message_handler(commands=['admin'])
+def admin_start(message):
     """Обработчик команды /admin"""
     if message.from_user.id != ADMIN_ID:
-        return await message.answer("❌ У вас нет прав администратора.")
+        return bot.send_message(message.chat.id, "❌ У вас нет прав администратора.")
         
-    await message.answer(
+    bot.send_message(
+        message.chat.id,
         "⚙️ **Добро пожаловать в Админку!**\n"
         "Выберите действие:",
         reply_markup=get_admin_main_keyboard(),
         parse_mode="Markdown"
     )
 
-@dp.message_handler(text="🔙 Выйти из админки", user_id=ADMIN_ID, state='*')
-async def exit_admin(message: types.Message):
-    """Выход из админки"""
-    await message.answer("👋 Вы вышли из админки.", reply_markup=get_main_keyboard())
-
 # --- ОБРАБОТЧИКИ МЕНЮ (Reply-кнопки) ---
 
-@dp.message_handler(text="🚀 Купить VPN", state='*')
-async def buy_vpn_menu(message: types.Message):
+@bot.message_handler(func=lambda message: message.text == "🚀 Купить VPN")
+def buy_vpn_menu(message):
     """Меню покупки VPN"""
     text = (
         "💰 **Выберите тарифный план:**\n"
         f"Сервер: **{VPN_SERVER_NAME}**"
     )
-    await message.answer(text, reply_markup=get_buy_options_keyboard(), parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, reply_markup=get_buy_options_keyboard(), parse_mode="Markdown")
 
-@dp.message_handler(text="👤 Личный кабинет", state='*')
-async def personal_account(message: types.Message):
+@bot.message_handler(func=lambda message: message.text == "👤 Личный кабинет")
+def personal_account(message):
     """Личный кабинет пользователя"""
     user_id = message.from_user.id
     user = get_user(user_id)
     
-    # Статус подписки
     is_active = check_subscription(user_id)
     status_text = "✅ Активна" if is_active else "❌ Неактивна"
     
-    # Дата окончания
     end_date_text = "—"
     if is_active:
         end_date_text = time.strftime("%d.%m.%Y %H:%M:%S", time.localtime(user["subscription_end"]))
@@ -267,22 +239,24 @@ async def personal_account(message: types.Message):
         "Выберите действие ниже:"
     )
     
-    await message.answer(text, reply_markup=get_profile_keyboard(user_id), parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, reply_markup=get_profile_keyboard(user_id), parse_mode="Markdown")
 
-@dp.message_handler(text="❓ Поддержка", state='*')
-async def support_info(message: types.Message):
+@bot.message_handler(func=lambda message: message.text == "❓ Поддержка")
+def support_info(message):
     """Информация о поддержке"""
     text = (
         "🆘 **Поддержка**\n"
         "По всем вопросам обращайтесь к администратору:\n"
         f"Ник: **{SUPPORT_USERNAME}**"
     )
-    await message.answer(text, parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-@dp.message_handler(text="🎁 Реферальная система", state='*')
-async def referral_system(message: types.Message):
+@bot.message_handler(func=lambda message: message.text == "🎁 Реферальная система")
+def referral_system(message):
     """Информация о реферальной системе"""
     user = get_user(message.from_user.id)
+    
+    referral_link = f"https://t.me/{bot.get_me().username}?start={user['referral_code']}"
     
     text = (
         "🎁 **Реферальная система**\n"
@@ -292,35 +266,70 @@ async def referral_system(message: types.Message):
         f"  - **{REFERRAL_BONUS_DAYS} дней** подписки\n"
         f"\n"
         f"**Ваших рефералов:** {user['referrals_count']} чел.\n"
-        "Используйте вашу уникальную ссылку, чтобы пригласить друга:"
+        f"**Ваша реферальная ссылка:** `{referral_link}`"
     )
     
-    await message.answer(text, reply_markup=get_referral_keyboard(message.from_user.id), parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, reply_markup=get_profile_keyboard(message.from_user.id), parse_mode="Markdown")
 
-# --- ОБРАБОТЧИКИ INLINE-КНОПОК (CALLBACKS) ---
+# Админка: Выход
+@bot.message_handler(func=lambda message: message.text == "🔙 Выйти из админки" and message.from_user.id == ADMIN_ID)
+def exit_admin(message):
+    """Выход из админки"""
+    bot.send_message(message.chat.id, "👋 Вы вышли из админки.", reply_markup=get_main_keyboard())
 
-@dp.callback_query_handler(lambda c: c.data == 'main_menu', state='*')
-async def process_main_menu(callback_query: types.CallbackQuery, state: FSMContext):
-    """Возврат в главное меню"""
-    await state.finish()
-    await callback_query.message.delete()
-    await send_welcome(callback_query.message)
-    await callback_query.answer()
+# Админка: Неподтвержденные платежи
+@bot.message_handler(func=lambda message: message.text == "✅ Неподтвержденные платежи" and message.from_user.id == ADMIN_ID)
+def admin_pending_payments(message):
+    """Поиск пользователей с ожидающим платежом"""
+    db = load_db()
+    pending_payments = db["pending_payments"]
+    
+    if not pending_payments:
+        return bot.send_message(message.chat.id, "ℹ️ Нет неподтвержденных платежей.")
+        
+    text = "⏳ **Ожидающие подтверждения платежи:**\n"
+    for payment_id, data in pending_payments.items():
+        user_id = data['user_id']
+        username = data.get('username', 'N/A')
+        plan_key = data['plan_key']
+        
+        text += (
+            f"\n"
+            f"ID платежа: `{payment_id}`\n"
+            f"От: @{username} (ID: `{user_id}`)\n"
+            f"Ожидает: {PRICES.get(plan_key, {}).get('days', '?')} дней за {PRICES.get(plan_key, {}).get('price', '?')} ₽\n"
+            f"(Нужно найти скриншот выше и нажать кнопки)"
+        )
+        
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-@dp.callback_query_handler(lambda c: c.data.startswith('buy_'), state='*')
-async def process_buy_callback(callback_query: types.CallbackQuery, state: FSMContext):
+# Админка: Управление конфигами
+@bot.message_handler(func=lambda message: message.text == "🛠️ Управление конфигами" and message.from_user.id == ADMIN_ID)
+def admin_config_menu(message):
+    """Меню управления конфигами"""
+    bot.send_message(
+        message.chat.id,
+        "🛠️ **Управление конфигами**\n"
+        "Выберите тариф для настройки/изменения конфига:",
+        reply_markup=get_admin_config_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+
+# --- ХЕНДЛЕРЫ ДЛЯ ПРОЦЕССА ОПЛАТЫ И КОНФИГОВ (TELEBOT) ---
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
+def process_buy_callback(call):
     """Начало процесса покупки"""
-    plan_key = callback_query.data.split('_')[1]
+    plan_key = call.data.split('_')[1]
     
     if plan_key not in PRICES:
-        return await callback_query.answer("❌ Тариф не найден.", show_alert=True)
+        return bot.answer_callback_query(call.id, "❌ Тариф не найден.", show_alert=True)
     
     plan_data = PRICES[plan_key]
     price = plan_data['price']
     
-    # Сохраняем выбранный план
-    update_user(callback_query.from_user.id, last_config_type=plan_key)
-    await state.update_data(plan_key=plan_key, price=price)
+    # Сохраняем выбранный план в базе
+    update_user(call.from_user.id, last_config_type=plan_key)
     
     text = (
         f"💳 **Оплата подписки на {plan_data['days']} дней ({price} ₽)**\n"
@@ -333,82 +342,101 @@ async def process_buy_callback(callback_query: types.CallbackQuery, state: FSMCo
     )
     
     keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("✅ Я оплатил, жду подтверждения", callback_data="paid_and_waiting"))
+    keyboard.add(types.InlineKeyboardButton("✅ Я оплатил, готов отправить скриншот", callback_data=f"wait_scr_{plan_key}"))
     keyboard.add(types.InlineKeyboardButton("🔙 Отмена", callback_data="main_menu"))
     
-    await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
-    await callback_query.answer()
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=keyboard, parse_mode="Markdown")
+    bot.answer_callback_query(call.id)
 
-@dp.callback_query_handler(lambda c: c.data == 'paid_and_waiting', state='*')
-async def process_paid_and_waiting(callback_query: types.CallbackQuery, state: FSMContext):
+@bot.callback_query_handler(func=lambda call: call.data.startswith('wait_scr_'))
+def process_paid_and_waiting(call):
     """Пользователь готов отправить скриншот"""
-    await Payment.waiting_for_screenshot.set()
-    await callback_query.message.edit_text("🖼️ **Ожидаю скриншот перевода.**\nОтправьте его мне как *изображение* или *файл*.")
-    await callback_query.answer()
+    plan_key = call.data.split('_')[2]
+    
+    msg = bot.edit_message_text("🖼️ **Ожидаю скриншот перевода.**\nОтправьте его мне как *изображение* или *файл*.", 
+                                call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    
+    # Регистрируем следующий шаг на прием скриншота, передавая plan_key
+    bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
+    bot.answer_callback_query(call.id)
 
-@dp.message_handler(content_types=['photo', 'document'], state=Payment.waiting_for_screenshot)
-async def process_screenshot(message: types.Message, state: FSMContext):
+def process_screenshot(message, plan_key):
     """Получение скриншота и отправка админу"""
     user_id = message.from_user.id
-    user_data = await state.get_data()
-    plan_key = user_data.get('plan_key')
-    price = user_data.get('price')
+    price = PRICES[plan_key]['price']
     
-    # Получаем ID файла (для фото - последнее, для документа - сам документ)
+    # Проверка, что это фото или документ
+    if message.content_type not in ['photo', 'document']:
+        msg = bot.send_message(user_id, "❌ Это не скриншот. Пожалуйста, отправьте его как изображение или файл.")
+        return bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
+
     file_id = None
     if message.photo:
         file_id = message.photo[-1].file_id
+        file_type = "photo"
     elif message.document:
         file_id = message.document.file_id
+        file_type = "document"
     
     if not file_id:
-        return await message.answer("❌ Не удалось получить файл. Попробуйте еще раз.")
+        msg = bot.send_message(user_id, "❌ Не удалось получить файл. Попробуйте еще раз.")
+        return bot.register_next_step_handler(msg, process_screenshot, plan_key=plan_key)
         
-    # Помечаем платеж как ожидающий
-    update_user(user_id, payment_pending=True)
+    # Создание уникального ID для платежа
+    payment_id = f"{user_id}_{int(time.time())}"
+    
+    # Сохранение информации о платеже в базе
+    db = load_db()
+    db["pending_payments"][payment_id] = {
+        "user_id": user_id,
+        "username": message.from_user.username,
+        "plan_key": plan_key,
+        "file_id": file_id,
+        "file_type": file_type
+    }
+    save_db(db)
     
     # Отправка админу на подтверждение
     admin_text = (
-        f"🔔 **НОВЫЙ ПЛАТЕЖ!**\n"
+        f"🔔 **НОВЫЙ ПЛАТЕЖ!** (ID: `{payment_id}`)\n"
         f"**От:** Пользователь @{message.from_user.username or user_id} (ID: `{user_id}`)\n"
         f"**Тариф:** {PRICES[plan_key]['days']} дней\n"
-        f"**Сумма:** {price} ₽\n"
-        f"**Скриншот:**"
+        f"**Сумма:** {price} ₽"
     )
     
     keyboard = types.InlineKeyboardMarkup()
     keyboard.row(
-        types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"admin_confirm_{user_id}_{plan_key}"),
-        types.InlineKeyboardButton("❌ Отклонить", callback_data=f"admin_decline_{user_id}")
+        types.InlineKeyboardButton("✅ Подтвердить", callback_data=f"admin_confirm_{payment_id}"),
+        types.InlineKeyboardButton("❌ Отклонить", callback_data=f"admin_decline_{payment_id}")
     )
     
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    await bot.send_photo(ADMIN_ID, file_id, reply_markup=keyboard)
+    # Отправка скриншота
+    if file_type == "photo":
+        bot.send_photo(ADMIN_ID, file_id, caption=admin_text, reply_markup=keyboard, parse_mode="Markdown")
+    else:
+        bot.send_document(ADMIN_ID, file_id, caption=admin_text, reply_markup=keyboard, parse_mode="Markdown")
     
-    await message.answer(
+    # Уведомление пользователя
+    bot.send_message(user_id,
         "✅ **Скриншот получен!**\n"
         "Ваш платеж отправлен на проверку администратору. "
         "Пожалуйста, ожидайте подтверждения (обычно занимает не более 5-10 минут)."
     )
-    
-    await state.finish()
 
-@dp.callback_query_handler(lambda c: c.data == 'get_config', state='*')
-async def process_get_config(callback_query: types.CallbackQuery):
+@bot.callback_query_handler(func=lambda call: call.data == 'get_config')
+def process_get_config(call):
     """Выдача конфига из личного кабинета"""
-    user_id = callback_query.from_user.id
+    user_id = call.from_user.id
     user = get_user(user_id)
     
     if not check_subscription(user_id):
-        await callback_query.answer("❌ Ваша подписка неактивна. Пожалуйста, продлите ее.", show_alert=True)
-        return
+        return bot.answer_callback_query(call.id, "❌ Ваша подписка неактивна. Пожалуйста, продлите ее.", show_alert=True)
         
     config_key = user['last_config_type']
     db = load_db()
     
     if not config_key or config_key not in db["configs"]:
-        await callback_query.answer("❌ Не удалось найти информацию о вашем конфиге. Обратитесь в поддержку.", show_alert=True)
-        return
+        return bot.answer_callback_query(call.id, "❌ Не удалось найти информацию о вашем конфиге. Обратитесь в поддержку.", show_alert=True)
         
     config_data = db["configs"][config_key]
     
@@ -425,61 +453,48 @@ async def process_get_config(callback_query: types.CallbackQuery):
         f"**Окончание подписки:** {time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(user['subscription_end']))}"
     )
     
-    await callback_query.message.answer(text, parse_mode="Markdown")
-    await callback_query.answer()
+    bot.send_message(user_id, text, parse_mode="Markdown")
+    bot.answer_callback_query(call.id)
 
-# --- АДМИНКА: ПЛАТЕЖИ ---
-
-@dp.message_handler(text="✅ Неподтвержденные платежи", user_id=ADMIN_ID, state='*')
-async def admin_pending_payments(message: types.Message):
-    """Поиск пользователей с ожидающим платежом"""
-    db = load_db()
-    pending_users = [
-        uid for uid, udata in db["users"].items() if udata.get("payment_pending")
-    ]
-    
-    if not pending_users:
-        return await message.answer("ℹ️ Нет неподтвержденных платежей.")
-        
-    text = "⏳ **Ожидающие подтверждения платежи:**\n"
-    for uid in pending_users:
-        user = db["users"][uid]
-        text += (
-            f"\n"
-            f"ID: `{uid}`\n"
-            f"Ник: @{user.get('username', 'N/A')}\n"
-            f"Ожидает: Конфиг на {PRICES.get(user.get('last_config_type', 'N/A'), {}).get('days', '?')} дней\n"
-            f"(Нужно найти скриншот выше в чате и подтвердить)"
-        )
-        
-    await message.answer(text, parse_mode="Markdown")
-
-@dp.callback_query_handler(lambda c: c.data.startswith('admin_confirm_'), user_id=ADMIN_ID, state='*')
-async def admin_confirm_payment(callback_query: types.CallbackQuery):
-    """Подтверждение платежа администратором"""
+@bot.callback_query_handler(func=lambda call: call.data == 'main_menu')
+def process_main_menu(call):
+    """Возврат в главное меню"""
+    # Удаляем сообщение с кнопками, чтобы не было "висящих" клавиатур
     try:
-        _, _, user_id, plan_key = callback_query.data.split('_')
-        user_id = int(user_id)
-    except ValueError:
-        return await callback_query.answer("❌ Ошибка в данных callback'а.", show_alert=True)
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass # Игнорируем ошибку, если сообщение уже удалено
+    send_welcome(call.message)
+    bot.answer_callback_query(call.id)
+
+
+# --- АДМИНКА: ОБРАБОТЧИКИ CALLBACKS (TELEBOT) ---
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_confirm_') and call.from_user.id == ADMIN_ID)
+def admin_confirm_payment(call):
+    """Подтверждение платежа администратором"""
+    payment_id = call.data.split('_')[2]
         
     db = load_db()
-    if str(user_id) not in db["users"]:
-        return await callback_query.answer("❌ Пользователь не найден.", show_alert=True)
-        
-    user = db["users"][str(user_id)]
-    if not user.get("payment_pending"):
-        await callback_query.message.edit_reply_markup(None)
-        return await callback_query.answer("❌ Платеж уже обработан или не ожидал подтверждения.", show_alert=True)
-        
+    payment_data = db["pending_payments"].pop(payment_id, None)
+    
+    if not payment_data:
+        bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
+                                 caption=call.message.caption + "\n\n**⚠️ ПЛАТЕЖ УЖЕ БЫЛ ОБРАБОТАН.**", 
+                                 reply_markup=None, parse_mode="Markdown")
+        return bot.answer_callback_query(call.id, "❌ Платеж уже обработан.", show_alert=True)
+
+    user_id = payment_data['user_id']
+    plan_key = payment_data['plan_key']
+    
     # 1. Активация подписки
     duration = PRICES[plan_key]["duration"]
     new_end_time = add_subscription(user_id, duration)
     
-    # 2. Обнуление флага ожидания
-    update_user(user_id, payment_pending=False)
+    # 2. Обновление БД
+    save_db(db)
     
-    # 3. Отправка конфига пользователю
+    # 3. Отправка конфига пользователю (логика та же, что в get_config)
     config_data = db["configs"].get(plan_key)
     if config_data:
         config_text = (
@@ -497,144 +512,130 @@ async def admin_confirm_payment(callback_query: types.CallbackQuery):
             f"\n"
             f"**Окончание подписки:** {time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(new_end_time))}"
         )
-        await bot.send_message(user_id, config_text, parse_mode="Markdown")
-    else:
-        await bot.send_message(user_id, 
-                               f"🎉 **Ваш платеж подтвержден!** Подписка на **{PRICES[plan_key]['days']} дней** активирована.\n"
-                               f"⚠️ **Внимание!** Конфиг не был выдан, так как он не настроен в админке. Обратитесь в поддержку.", 
-                               parse_mode="Markdown")
-        
-    # 4. Обновление сообщения админа
-    await callback_query.message.edit_caption(
-        callback_query.message.caption + "\n\n**✅ ПЛАТЕЖ ПОДТВЕРЖДЕН и КОНФИГ ВЫДАН.**",
-        reply_markup=None,
-        parse_mode="Markdown"
-    )
-    await callback_query.answer("✅ Платеж подтвержден. Подписка активирована и конфиг отправлен.")
+        try:
+            bot.send_message(user_id, config_text, parse_mode="Markdown")
+        except telebot.apihelper.ApiTelegramException:
+             logging.error(f"Не удалось отправить сообщение пользователю {user_id}. Вероятно, он заблокировал бота.")
+             bot.send_message(ADMIN_ID, f"⚠️ **Внимание!** Не удалось отправить конфиг пользователю `{user_id}` (возможно, заблокировал бота).")
 
-@dp.callback_query_handler(lambda c: c.data.startswith('admin_decline_'), user_id=ADMIN_ID, state='*')
-async def admin_decline_payment(callback_query: types.CallbackQuery):
+    # 4. Обновление сообщения админа
+    bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
+                             caption=call.message.caption + "\n\n**✅ ПЛАТЕЖ ПОДТВЕРЖДЕН и КОНФИГ ВЫДАН.**",
+                             reply_markup=None,
+                             parse_mode="Markdown")
+    bot.answer_callback_query(call.id, "✅ Платеж подтвержден. Подписка активирована и конфиг отправлен.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_decline_') and call.from_user.id == ADMIN_ID)
+def admin_decline_payment(call):
     """Отклонение платежа администратором"""
-    try:
-        _, _, user_id = callback_query.data.split('_')
-        user_id = int(user_id)
-    except ValueError:
-        return await callback_query.answer("❌ Ошибка в данных callback'а.", show_alert=True)
+    payment_id = call.data.split('_')[2]
+    
+    db = load_db()
+    payment_data = db["pending_payments"].pop(payment_id, None)
+    save_db(db)
+    
+    if not payment_data:
+        bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
+                                 caption=call.message.caption + "\n\n**⚠️ ПЛАТЕЖ УЖЕ БЫЛ ОБРАБОТАН.**", 
+                                 reply_markup=None, parse_mode="Markdown")
+        return bot.answer_callback_query(call.id, "❌ Платеж уже обработан.", show_alert=True)
         
-    user = get_user(user_id)
-    if not user.get("payment_pending"):
-        await callback_query.message.edit_reply_markup(None)
-        return await callback_query.answer("❌ Платеж уже обработан или не ожидал подтверждения.", show_alert=True)
-        
-    # Обнуление флага ожидания
-    update_user(user_id, payment_pending=False)
+    user_id = payment_data['user_id']
     
     # Уведомление пользователя
-    await bot.send_message(
-        user_id,
-        "❌ **Ваш платеж не подтвержден.**\n"
-        "Возможно, скриншот был нечетким, или перевод не поступил.\n"
-        f"Пожалуйста, свяжитесь с поддержкой: **{SUPPORT_USERNAME}**",
-        parse_mode="Markdown"
-    )
-    
+    try:
+        bot.send_message(
+            user_id,
+            "❌ **Ваш платеж не подтвержден.**\n"
+            "Возможно, скриншот был нечетким, или перевод не поступил.\n"
+            f"Пожалуйста, свяжитесь с поддержкой: **{SUPPORT_USERNAME}**",
+            parse_mode="Markdown"
+        )
+    except telebot.apihelper.ApiTelegramException:
+         logging.error(f"Не удалось отправить сообщение пользователю {user_id}. Вероятно, он заблокировал бота.")
+
     # Обновление сообщения админа
-    await callback_query.message.edit_caption(
-        callback_query.message.caption + "\n\n**❌ ПЛАТЕЖ ОТКЛОНЕН.**",
-        reply_markup=None,
-        parse_mode="Markdown"
-    )
-    await callback_query.answer("❌ Платеж отклонен. Пользователь уведомлен.")
+    bot.edit_message_caption(call.message.chat.id, call.message.message_id, 
+                             caption=call.message.caption + "\n\n**❌ ПЛАТЕЖ ОТКЛОНЕН.**",
+                             reply_markup=None,
+                             parse_mode="Markdown")
+    bot.answer_callback_query(call.id, "❌ Платеж отклонен. Пользователь уведомлен.")
 
-# --- АДМИНКА: КОНФИГИ ---
+# --- АДМИНКА: КОНФИГИ (TELEBOT) ---
 
-@dp.message_handler(text="🛠️ Управление конфигами", user_id=ADMIN_ID, state='*')
-async def admin_config_menu(message: types.Message):
-    """Меню управления конфигами"""
-    await message.answer(
-        "🛠️ **Управление конфигами**\n"
-        "Выберите тариф для настройки/изменения конфига:",
-        reply_markup=get_admin_config_menu_keyboard(),
-        parse_mode="Markdown"
-    )
-
-@dp.callback_query_handler(lambda c: c.data.startswith('admin_cfg_edit_'), user_id=ADMIN_ID, state='*')
-async def admin_cfg_start_edit(callback_query: types.CallbackQuery, state: FSMContext):
+@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_cfg_edit_') and call.from_user.id == ADMIN_ID)
+def admin_cfg_start_edit(call):
     """Начало процесса редактирования конфига"""
-    config_key = callback_query.data.split('_')[-1]
-    
-    if config_key not in PRICES:
-        return await callback_query.answer("❌ Тариф не найден.", show_alert=True)
-        
+    config_key = call.data.split('_')[-1]
     plan_data = PRICES[config_key]
     
-    await state.update_data(current_config_key=config_key)
-    
-    await AdminConfig.waiting_for_config_link.set()
-    await callback_query.message.edit_text(
+    msg = bot.edit_message_text(
         f"🔗 **Настройка конфига на {plan_data['days']} дней**\n"
-        "Шаг 1/3: **Отправьте ссылку на VPN-конфиг** (например, ссылку на файл или подписку)."
+        "Шаг 1/3: **Отправьте ссылку на VPN-конфиг** (например, ссылку на файл или подписку).",
+        call.message.chat.id, call.message.message_id
     )
-    await callback_query.answer()
+    
+    # Регистрируем следующий шаг: получение ссылки
+    bot.register_next_step_handler(msg, admin_cfg_get_link, config_key=config_key)
+    bot.answer_callback_query(call.id)
 
-@dp.message_handler(state=AdminConfig.waiting_for_config_link)
-async def admin_cfg_get_link(message: types.Message, state: FSMContext):
+def admin_cfg_get_link(message, config_key):
     """Получение ссылки на конфиг"""
-    await state.update_data(config_link=message.text)
-    await AdminConfig.waiting_for_config_code.set()
-    await message.answer(
+    config_link = message.text
+    
+    msg = bot.send_message(message.chat.id, 
         "📋 Шаг 2/3: **Отправьте код конфига** (QR-код или ключ). "
         "Если код не нужен, отправьте `НЕТ`."
     )
+    
+    # Регистрируем следующий шаг: получение кода
+    bot.register_next_step_handler(msg, admin_cfg_get_code, config_key=config_key, config_link=config_link)
 
-@dp.message_handler(state=AdminConfig.waiting_for_config_code)
-async def admin_cfg_get_code(message: types.Message, state: FSMContext):
+def admin_cfg_get_code(message, config_key, config_link):
     """Получение кода конфига"""
     code = message.text.upper()
-    await state.update_data(config_code="—" if code == "НЕТ" else code)
-    await AdminConfig.waiting_for_config_desc.set()
-    await message.answer(
+    config_code = "—" if code == "НЕТ" else code
+    
+    msg = bot.send_message(message.chat.id, 
         "📝 Шаг 3/3: **Отправьте описание по установке/использованию конфига.** "
         "Это будет инструкция для пользователя."
     )
+    
+    # Регистрируем следующий шаг: получение описания и сохранение
+    bot.register_next_step_handler(msg, admin_cfg_save, config_key=config_key, config_link=config_link, config_code=config_code)
 
-@dp.message_handler(state=AdminConfig.waiting_for_config_desc)
-async def admin_cfg_get_desc(message: types.Message, state: FSMContext):
+def admin_cfg_save(message, config_key, config_link, config_code):
     """Получение описания и сохранение конфига"""
-    data = await state.get_data()
-    config_key = data['current_config_key']
+    config_description = message.text
     
     db = load_db()
     db["configs"][config_key] = {
-        "link": data['config_link'],
-        "code": data['config_code'],
-        "description": message.text,
+        "link": config_link,
+        "code": config_code,
+        "description": config_description,
     }
     save_db(db)
     
-    await state.finish()
-    
     plan_data = PRICES[config_key]
-    await message.answer(
+    bot.send_message(
+        message.chat.id,
         f"✅ **Конфиг на {plan_data['days']} дней успешно обновлен!**\n"
-        f"**Ссылка:** {data['config_link']}\n"
-        f"**Код:** {data['config_code']}\n"
-        f"**Описание:** {message.text}",
-        reply_markup=get_admin_main_keyboard()
+        f"**Ссылка:** {config_link}\n"
+        f"**Код:** {config_code}\n"
+        f"**Описание:** {config_description}",
+        reply_markup=get_admin_main_keyboard(),
+        parse_mode="Markdown"
     )
-
 
 # --- ЗАПУСК БОТА ---
 if __name__ == '__main__':
-    # Создаем db.json, если не существует
+    logging.info("Бот запускается...")
+    # Инициализация DB и данных админа
     load_db() 
     
-    # Устанавливаем админу username в базе (для удобства отображения платежей)
+    # В telebot используется polling
     try:
-        admin_info = get_user(ADMIN_ID)
-        if admin_info.get('username') != SUPPORT_USERNAME.strip('@'):
-            update_user(ADMIN_ID, username=SUPPORT_USERNAME.strip('@'))
+        bot.polling(none_stop=True, interval=1)
     except Exception as e:
-        logging.error(f"Не удалось обновить username админа: {e}")
-        
-    executor.start_polling(dp, skip_updates=True)
+        logging.error(f"Ошибка при запуске бота: {e}")
+
