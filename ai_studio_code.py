@@ -20,7 +20,8 @@ PRICE_MONTH = 50
 PRICE_2_MONTHS = 90 # Со скидкой
 PRICE_3_MONTHS = 120 # Со скидкой
 
-REFERRAL_BONUS_RUB = 25
+REFERRAL_BONUS_NEW_USER = 50 # Рублей новому пользователю
+REFERRAL_BONUS_REFERRER = 25 # Рублей тому кто пригласил
 REFERRAL_BONUS_DAYS = 7 # Дней подписки за реферала
 
 # Курс Stars (1 звезда = 1.5 рубля)
@@ -47,12 +48,52 @@ payments_db = load_data('payments.json')
 
 # --- МОДЕЛИ ДАННЫХ ---
 # users_db: { user_id: { 'balance': 0, 'subscription_end': None, 'referred_by': None, 'username': '...', 'first_name': '...', 'referrals_count': 0, 'used_configs': [] } }
-# configs_db: { '1_month': [ { 'name': 'Germany 1', 'image': 'url_to_image', 'code': 'config_code', 'link': 'link_to_config', 'added_by': 'admin_username' }, ... ], '2_months': [], '3_months': [] }
+# configs_db: { '1_month': [ { 'name': 'Germany 1', 'image': 'url_to_image', 'code': 'config_code', 'link': 'link_to_config', 'added_by': 'admin_username', 'used': False }, ... ], '2_months': [], '3_months': [] }
 # payments_db: { payment_id: { 'user_id': ..., 'amount': ..., 'status': 'pending/confirmed/rejected', 'screenshot_id': ..., 'timestamp': ..., 'period': ... } }
 
 # --- ГЕНЕРАТОР УНИКАЛЬНОГО ID ДЛЯ ПЛАТЕЖЕЙ ---
 def generate_payment_id():
     return str(int(time.time() * 100000))
+
+# --- ФУНКЦИИ ---
+def get_available_config(period):
+    """Находит первый неиспользованный конфиг для периода"""
+    if period not in configs_db:
+        return None
+    
+    for config in configs_db[period]:
+        if not config.get('used', False):
+            return config
+    return None
+
+def mark_config_used(period, config_link):
+    """Помечает конфиг как использованный"""
+    if period not in configs_db:
+        return False
+    
+    for config in configs_db[period]:
+        if config['link'] == config_link:
+            config['used'] = True
+            save_data('configs.json', configs_db)
+            return True
+    return False
+
+def get_subscription_days_left(user_id):
+    """Возвращает количество дней до окончания подписки"""
+    user_info = users_db.get(str(user_id), {})
+    subscription_end = user_info.get('subscription_end')
+    
+    if not subscription_end:
+        return 0
+    
+    end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
+    now = datetime.datetime.now()
+    
+    if end_date <= now:
+        return 0
+    
+    days_left = (end_date - now).days
+    return max(0, days_left)
 
 # --- ФУНКЦИИ АДМИНКИ ---
 def admin_keyboard():
@@ -74,6 +115,7 @@ def manage_configs_keyboard():
         types.InlineKeyboardButton("Добавить конфиг", callback_data="admin_add_config"),
         types.InlineKeyboardButton("Удалить конфиг", callback_data="admin_delete_config"),
         types.InlineKeyboardButton("Показать конфиги", callback_data="admin_show_configs"),
+        types.InlineKeyboardButton("Сбросить использование конфигов", callback_data="admin_reset_configs"),
         types.InlineKeyboardButton("Назад в админку", callback_data="admin_panel")
     )
     return markup
@@ -150,14 +192,23 @@ def buy_vpn_keyboard():
     )
     return markup
 
-def payment_methods_keyboard(period_callback_data, amount):
+def payment_methods_keyboard(period_callback_data, amount, user_balance):
     # Конвертируем в Stars (1 звезда = 1.5 рубля)
     stars_amount = int(amount / STARS_TO_RUB)
     
     markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    # Если на балансе есть деньги, показываем оплату с баланса
+    if user_balance > 0:
+        needed_amount = max(0, amount - user_balance)
+        if needed_amount == 0:
+            markup.add(types.InlineKeyboardButton(f"💳 Оплата с баланса ({amount} ₽)", callback_data=f"pay_balance_{period_callback_data}"))
+        else:
+            markup.add(types.InlineKeyboardButton(f"💳 Оплата с баланса ({user_balance} ₽ + {needed_amount} ₽)", callback_data=f"pay_balance_{period_callback_data}"))
+    
     markup.add(
-        types.InlineKeyboardButton(f"Оплата картой ({amount} ₽)", callback_data=f"pay_card_{period_callback_data}"),
-        types.InlineKeyboardButton(f"Оплата Telegram Stars ({stars_amount} Stars)", callback_data=f"pay_stars_{period_callback_data}"),
+        types.InlineKeyboardButton(f"💳 Оплата картой ({amount} ₽)", callback_data=f"pay_card_{period_callback_data}"),
+        types.InlineKeyboardButton(f"⭐ Оплата Telegram Stars ({stars_amount} Stars)", callback_data=f"pay_stars_{period_callback_data}"),
         types.InlineKeyboardButton("Назад", callback_data="buy_vpn")
     )
     return markup
@@ -192,11 +243,12 @@ def my_configs_keyboard(user_id):
 # --- ФУНКЦИЯ ВЫДАЧИ КОНФИГА ---
 def send_config_to_user(user_id, period, username, first_name):
     """Выдает конфиг пользователю и сохраняет информацию о выдаче"""
-    if period not in configs_db or not configs_db[period]:
+    config = get_available_config(period)
+    if not config:
         return False, "Нет доступных конфигов для этого периода"
     
-    # Берем первый доступный конфиг для этого периода
-    config = configs_db[period][0]
+    # Помечаем конфиг как использованный
+    mark_config_used(period, config['link'])
     
     # Генерируем уникальное имя для конфига
     config_name = f"{first_name} ({username}) - {period.replace('_', ' ')}"
@@ -243,8 +295,10 @@ def send_welcome(message):
                 potential_referrer_id = message.text.split()[1]
                 if potential_referrer_id in users_db and potential_referrer_id != user_id:
                     referred_by_id = potential_referrer_id
+                    
+                    # Начисляем бонусы за реферала
                     users_db[potential_referrer_id]['referrals_count'] = users_db[potential_referrer_id].get('referrals_count', 0) + 1
-                    users_db[potential_referrer_id]['balance'] = users_db[potential_referrer_id].get('balance', 0) + REFERRAL_BONUS_RUB
+                    users_db[potential_referrer_id]['balance'] = users_db[potential_referrer_id].get('balance', 0) + REFERRAL_BONUS_REFERRER
                     
                     # Добавляем дни подписки рефереру, если у него есть активная подписка
                     if users_db[potential_referrer_id].get('subscription_end'):
@@ -253,18 +307,18 @@ def send_welcome(message):
                         users_db[potential_referrer_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
                         bot.send_message(potential_referrer_id, 
                                          f"🎉 Ваш реферал @{username} зарегистрировался по вашей ссылке! "
-                                         f"Вам начислено {REFERRAL_BONUS_RUB} ₽ на баланс и {REFERRAL_BONUS_DAYS} дней к подписке!")
+                                         f"Вам начислено {REFERRAL_BONUS_REFERRER} ₽ на баланс и {REFERRAL_BONUS_DAYS} дней к подписке!")
                     else:
                         bot.send_message(potential_referrer_id, 
                                          f"🎉 Ваш реферал @{username} зарегистрировался по вашей ссылке! "
-                                         f"Вам начислено {REFERRAL_BONUS_RUB} ₽ на баланс.")
+                                         f"Вам начислено {REFERRAL_BONUS_REFERRER} ₽ на баланс.")
 
                     save_data('users.json', users_db)
             except ValueError:
                 pass # Если реферальный ID некорректен
 
         users_db[user_id] = {
-            'balance': 0,
+            'balance': REFERRAL_BONUS_NEW_USER,  # Новый пользователь получает 50 руб
             'subscription_end': None,
             'referred_by': referred_by_id,
             'username': username,
@@ -273,9 +327,17 @@ def send_welcome(message):
             'used_configs': []
         }
         save_data('users.json', users_db)
-
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в VPN Bot!",
-                     reply_markup=main_menu_keyboard(message.from_user.id))
+        
+        # Приветственное сообщение с бонусом
+        welcome_text = f"Привет! Добро пожаловать в VPN Bot!\n\n🎁 Вам начислен приветственный бонус: {REFERRAL_BONUS_NEW_USER} ₽ на баланс!"
+        if referred_by_id:
+            welcome_text += f"\n🤝 Вы зарегистрировались по реферальной ссылке!"
+        
+        bot.send_message(message.chat.id, welcome_text,
+                         reply_markup=main_menu_keyboard(message.from_user.id))
+    else:
+        bot.send_message(message.chat.id, "Привет! С возвращением в VPN Bot!",
+                         reply_markup=main_menu_keyboard(message.from_user.id))
 
 # --- ОБРАБОТЧИК CALLBACK-КНОПОК ---
 @bot.callback_query_handler(func=lambda call: True)
@@ -300,10 +362,81 @@ def callback_handler(call):
         elif period_data == "3_months":
             amount = PRICE_3_MONTHS
         
-        bot.edit_message_text(f"Вы выбрали подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}. "
-                              f"К оплате: {amount} ₽.\nВыберите способ оплаты:",
-                              chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              reply_markup=payment_methods_keyboard(period_data, amount))
+        user_balance = users_db.get(user_id, {}).get('balance', 0)
+        days_left = get_subscription_days_left(user_id)
+        
+        message_text = f"Вы выбрали подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}.\n"
+        message_text += f"💳 К оплате: {amount} ₽\n"
+        message_text += f"💰 Ваш баланс: {user_balance} ₽\n"
+        
+        if days_left > 0:
+            message_text += f"📅 Текущая подписка активна еще: {days_left} дней\n"
+        
+        message_text += f"\nВыберите способ оплаты:"
+        
+        bot.edit_message_text(message_text, 
+                              chat_id=call.message.chat.id, 
+                              message_id=call.message.message_id,
+                              reply_markup=payment_methods_keyboard(period_data, amount, user_balance))
+
+    elif call.data.startswith("pay_balance_"):
+        period_data = call.data.replace("pay_balance_", "")
+        amount = 0
+        if period_data == "1_month":
+            amount = PRICE_MONTH
+        elif period_data == "2_months":
+            amount = PRICE_2_MONTHS
+        elif period_data == "3_months":
+            amount = PRICE_3_MONTHS
+        
+        user_info = users_db.get(user_id, {})
+        user_balance = user_info.get('balance', 0)
+        
+        if user_balance >= amount:
+            # Списание с баланса
+            users_db[user_id]['balance'] = user_balance - amount
+            
+            # Обновляем подписку
+            current_end = user_info.get('subscription_end')
+            if current_end:
+                current_end = datetime.datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S')
+            else:
+                current_end = datetime.datetime.now()
+
+            add_days = 0
+            if period_data == '1_month': add_days = 30
+            elif period_data == '2_months': add_days = 60
+            elif period_data == '3_months': add_days = 90
+            
+            new_end = current_end + datetime.timedelta(days=add_days)
+            users_db[user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
+            save_data('users.json', users_db)
+
+            # Выдаем конфиг
+            success, result = send_config_to_user(user_id, period_data, 
+                                                user_info.get('username', 'user'), 
+                                                user_info.get('first_name', 'User'))
+            
+            if success:
+                bot.edit_message_text(f"✅ Оплата прошла успешно!\n"
+                                      f"💳 Списано с баланса: {amount} ₽\n"
+                                      f"💰 Остаток на балансе: {user_balance - amount} ₽\n"
+                                      f"📅 Подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
+                                      f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
+                                      chat_id=call.message.chat.id, 
+                                      message_id=call.message.message_id)
+            else:
+                bot.edit_message_text(f"✅ Оплата прошла успешно, но возникла ошибка при выдаче конфига: {result}\n"
+                                      f"Обратитесь в поддержку: @Gl1ch555",
+                                      chat_id=call.message.chat.id, 
+                                      message_id=call.message.message_id)
+        else:
+            bot.edit_message_text(f"❌ Недостаточно средств на балансе!\n"
+                                  f"💰 Ваш баланс: {user_balance} ₽\n"
+                                  f"💳 Требуется: {amount} ₽\n"
+                                  f"💸 Не хватает: {amount - user_balance} ₽",
+                                  chat_id=call.message.chat.id, 
+                                  message_id=call.message.message_id)
 
     elif call.data.startswith("pay_card_"):
         period_data = call.data.replace("pay_card_", "")
@@ -378,23 +511,21 @@ def callback_handler(call):
         user_info = users_db.get(user_id, {})
         subscription_end = user_info.get('subscription_end')
         balance = user_info.get('balance', 0)
+        days_left = get_subscription_days_left(user_id)
 
-        status_text = "Нет активной подписки"
-        if subscription_end:
+        status_text = "❌ Нет активной подписки"
+        if days_left > 0:
             end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
-            if end_date > datetime.datetime.now():
-                status_text = f"Подписка активна до: {end_date.strftime('%d.%m.%Y %H:%M')}"
-            else:
-                status_text = "Подписка истекла"
-                users_db[user_id]['subscription_end'] = None # Обнуляем, если истекла
-                save_data('users.json', users_db)
+            status_text = f"✅ Активна еще {days_left} дней (до {end_date.strftime('%d.%m.%Y')})"
 
-        bot.edit_message_text(f"👤 Ваш личный кабинет:\n\n"
-                              f"Статус подписки: {status_text}\n"
-                              f"Баланс: {balance} ₽\n"
-                              f"Ваше имя: {user_info.get('first_name', 'N/A')}\n"
-                              f"Ваш username: @{user_info.get('username', 'N/A')}\n\n",
+        bot.edit_message_text(f"👤 **Ваш личный кабинет**\n\n"
+                              f"📊 **Статус подписки:** {status_text}\n"
+                              f"💰 **Баланс:** {balance} ₽\n"
+                              f"👨 **Ваше имя:** {user_info.get('first_name', 'N/A')}\n"
+                              f"📱 **Username:** @{user_info.get('username', 'N/A')}\n"
+                              f"🤝 **Рефералов приглашено:** {user_info.get('referrals_count', 0)}\n\n",
                               chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              parse_mode='Markdown',
                               reply_markup=my_account_keyboard())
 
     elif call.data == "my_configs":
@@ -407,14 +538,9 @@ def callback_handler(call):
         user_info = users_db.get(user_id, {})
         
         # Проверяем активную подписку
-        subscription_end = user_info.get('subscription_end')
-        if not subscription_end:
-            bot.send_message(call.message.chat.id, "❌ У вас нет активной подписки.")
-            return
-        
-        end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
-        if end_date <= datetime.datetime.now():
-            bot.send_message(call.message.chat.id, "❌ Ваша подписка истекла.")
+        days_left = get_subscription_days_left(user_id)
+        if days_left <= 0:
+            bot.send_message(call.message.chat.id, "❌ У вас нет активной подписки или подписка истекла.")
             return
         
         # Выдаем конфиг
@@ -445,12 +571,14 @@ def callback_handler(call):
                               f"💡 **Как это работает:**\n"
                               f"• Вы получаете уникальную реферальную ссылку\n"
                               f"• Делитесь ей с друзьями и знакомыми\n"
-                              f"• Когда кто-то регистрируется по вашей ссылке и покупает подписку:\n"
-                              f"  🔹 Вы получаете {REFERRAL_BONUS_RUB} ₽ на баланс\n"
-                              f"  🔹 И {REFERRAL_BONUS_DAYS} дней к вашей активной подписке\n\n"
+                              f"• Когда кто-то регистрируется по вашей ссылке:\n"
+                              f"  🎁 **Новому пользователю** начисляется {REFERRAL_BONUS_NEW_USER} ₽ на баланс\n"
+                              f"  💰 **Вам** начисляется {REFERRAL_BONUS_REFERRER} ₽ на баланс\n"
+                              f"  📅 **Вам** добавляется {REFERRAL_BONUS_DAYS} дней к активной подписке\n\n"
                               f"💰 **Ваши бонусы:**\n"
                               f"• Рефералов приглашено: {referrals_count}\n"
-                              f"• Реферальный баланс: {balance} ₽\n\n"
+                              f"• Заработано: {referrals_count * REFERRAL_BONUS_REFERRER} ₽\n"
+                              f"• Текущий баланс: {balance} ₽\n\n"
                               f"📎 **Ваша реферальная ссылка:**\n"
                               f"`{referral_link}`\n\n"
                               f"💸 Баланс можно использовать для оплаты подписки!",
@@ -480,13 +608,30 @@ def callback_handler(call):
             for period, configs_list in configs_db.items():
                 message_text += f"**{period.replace('_', ' ').capitalize()}:**\n"
                 if configs_list:
+                    available_count = sum(1 for config in configs_list if not config.get('used', False))
+                    message_text += f"  Всего: {len(configs_list)}, Доступно: {available_count}\n"
                     for i, config in enumerate(configs_list):
-                        message_text += f"  {i+1}. Имя: {config['name']}, Код: `{config['code']}` (ID: {i})\n"
+                        status = "✅" if not config.get('used', False) else "❌"
+                        message_text += f"  {i+1}. {status} {config['name']} - `{config['link']}`\n"
                 else:
                     message_text += "  (Нет конфигов)\n"
             
             bot.edit_message_text(message_text, chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   parse_mode='Markdown', reply_markup=manage_configs_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_reset_configs":
+        if str(user_id) == str(ADMIN_ID):
+            reset_count = 0
+            for period in configs_db:
+                for config in configs_db[period]:
+                    if config.get('used', False):
+                        config['used'] = False
+                        reset_count += 1
+            save_data('configs.json', configs_db)
+            bot.send_message(call.message.chat.id, f"✅ Сброшено использование {reset_count} конфигов.",
+                           reply_markup=manage_configs_keyboard())
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
@@ -879,8 +1024,9 @@ def process_successful_payment(message):
             if success:
                 bot.send_message(user_id, 
                                  f"✅ Ваш платеж за подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')} подтвержден!\n"
-                                 f"Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
-                                 f"Конфиг уже выдан! Проверьте сообщения выше.",
+                                 f"⭐ Оплачено: {payment_info.total_amount} Stars\n"
+                                 f"📅 Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
+                                 f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
                                  reply_markup=main_menu_keyboard(user_id))
             else:
                 bot.send_message(user_id, 
@@ -942,7 +1088,8 @@ def process_add_configs_bulk(message, period):
                 'image': None,
                 'code': f"{username}_{len(configs_db[period]) + 1}",
                 'link': link,
-                'added_by': username
+                'added_by': username,
+                'used': False
             }
             
             configs_db[period].append(config_data)
