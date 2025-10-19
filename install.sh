@@ -43,13 +43,7 @@ pip install aiogram || { echo "Не удалось установить aiogram.
 echo "aiogram успешно установлен."
 deactivate # Деактивируем venv после установки
 
-# 4. Создаем папку configs (если ее нет в репозитории)
-echo "Создаем папку 'configs' для конфигов VPN..."
-mkdir -p configs
-echo "ВАЖНО: Пожалуйста, вручную загрузите ваши VPN-конфиги (файлы .conf) в папку: ${USER_HOME}/${BOT_DIR}/configs"
-echo "Файлы должны называться по типу: 1_month_config_anyname.conf, 2_month_config_anyname.conf и т.д."
-
-# 5. Создаем systemd сервис для фонового запуска
+# 4. Создаем systemd сервис для фонового запуска
 echo "Создаем systemd сервис для бота..."
 SERVICE_FILE="/etc/systemd/system/${BOT_DIR}.service"
 
@@ -71,7 +65,7 @@ EOF
 
 echo "Сервис ${BOT_DIR}.service создан."
 
-# 6. Запускаем сервис
+# 5. Запускаем сервис
 echo "Перезагружаем systemd, включаем и запускаем сервис бота..."
 sudo systemctl daemon-reload
 sudo systemctl enable "${BOT_DIR}"
@@ -84,4 +78,4 @@ echo "Установка завершена! Бот должен быть зап
 echo "Вы можете проверить логи бота командой: sudo journalctl -u ${BOT_DIR} -f"
 echo "Если хотите остановить бота: sudo systemctl stop ${BOT_DIR}"
 echo "Если хотите перезапустить бота: sudo systemctl restart ${BOT_DIR}"
-echo "Не забудьте вручную загрузить конфиги в ${USER_HOME}/${BOT_DIR}/configs"
+echo "Теперь вы можете добавить VPN-конфиги через админ-панель бота, используя команду /admin!"
