@@ -12,8 +12,7 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR" || { echo "Не удалось перейти в директорию $INSTALL_DIR"; exit 1; }
 
 echo "Загрузка файла bot.py из GitHub..."
-# Обратите внимание: ai_studio_code.py - это имя, которое вы указали для bot.py
-wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/ai_studio_code.py 
+wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/ai_studio_code.py # Ваша ссылка на bot.py
 
 if [ $? -ne 0 ]; then
     echo "Ошибка: Не удалось загрузить bot.py. Проверьте путь и доступность файла."
@@ -34,8 +33,8 @@ echo "Активация виртуального окружения..."
 source vpn_bot_env/bin/activate
 
 # Установка зависимостей
-echo "Установка зависимостей (pyTelegramBotAPI)..."
-pip install pyTelegramBotAPI
+echo "Установка зависимостей..."
+pip install pyTelegramBotAPI # Используем pyTelegramBotAPI
 
 # Создание необходимых JSON файлов, если их нет
 echo "Проверка и создание файлов БД..."
@@ -67,11 +66,9 @@ WantedBy=multi-user.target
 EOF
 
 # Включение и запуск сервиса
-echo "Перезагрузка systemd демона..."
+echo "Включение и запуск сервиса systemd..."
 systemctl daemon-reload
-echo "Включение сервиса vpn_tg_bot..."
 systemctl enable vpn_tg_bot.service
-echo "Запуск сервиса vpn_tg_bot..."
 systemctl start vpn_tg_bot.service
 
 echo "Бот успешно установлен и запущен как systemd сервис."
