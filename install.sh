@@ -1,12 +1,29 @@
 #!/bin/bash
 
-# Обновление списка пакетов
-echo "Обновление списка пакетов..."
-sudo apt update -y
+# Проверка, запущен ли скрипт от root
+if [ "$(id -u)" != "0" ]; then
+    echo "Этот скрипт должен быть запущен с правами root. Используйте sudo."
+    exit 1
+fi
 
-# Установка python3-full (включает venv)
-echo "Установка python3-full..."
-sudo apt install python3-full -y
+# Переходим во временную директорию для загрузки и установки
+INSTALL_DIR="/opt/vpn_bot"
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR" || { echo "Не удалось перейти в директорию $INSTALL_DIR"; exit 1; }
+
+echo "Загрузка файла bot.py из GitHub..."
+wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/ai_studio_code.py # Используем вашу ссылку на bot.py
+
+if [ $? -ne 0 ]; then
+    echo "Ошибка: Не удалось загрузить bot.py. Проверьте путь и доступность файла."
+    exit 1
+fi
+
+echo "Обновление списка пакетов..."
+apt update -y
+
+echo "Установка python3-full (включает venv)..."
+apt install python3-full -y
 
 # Создание и активация виртуального окружения
 echo "Создание виртуального окружения..."
@@ -17,31 +34,47 @@ source vpn_bot_env/bin/activate
 
 # Установка зависимостей
 echo "Установка зависимостей..."
-pip install pyTelegramBotAPI # Используем pyTelegramBotAPI, так как вы упомянули telebot
+pip install pyTelegramBotAPI # Используем pyTelegramBotAPI
 
 # Создание необходимых JSON файлов, если их нет
 echo "Проверка и создание файлов БД..."
-touch users.json
-if [ ! -s users.json ]; then
-  echo "{}" > users.json
-fi
+for db_file in users.json configs.json payments.json; do
+    if [ ! -f "$db_file" ]; then
+        echo "{}" > "$db_file"
+        echo "Создан пустой файл $db_file"
+    fi
+done
 
-touch configs.json
-if [ ! -s configs.json ]; then
-  echo "{}" > configs.json
-fi
+# Создаем systemd юнит для автозапуска бота
+echo "Создание systemd юнита для бота..."
+SERVICE_FILE="/etc/systemd/system/vpn_tg_bot.service"
 
-touch payments.json
-if [ ! -s payments.json ]; then
-  echo "{}" > payments.json
-fi
+cat << EOF > "$SERVICE_FILE"
+[Unit]
+Description=VPN Telegram Bot
+After=network.target
 
+[Service]
+User=root
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/vpn_bot_env/bin/python3 $INSTALL_DIR/bot.py
+Restart=always
+RestartSec=5
 
-# Запуск бота в фоновом режиме с редиректом вывода в лог файл
-echo "Запуск бота в фоновом режиме..."
-nohup python3 bot.py > bot_output.log 2>&1 &
+[Install]
+WantedBy=multi-user.target
+EOF
 
-echo "Бот успешно установлен и запущен в фоновом режиме."
-echo "Вывод бота можно посмотреть в файле bot_output.log"
-echo "Для остановки бота найдите его процесс (например, 'ps aux | grep bot.py') и используйте 'kill <PID>'."
-echo "Для повторной активации окружения и запуска: 'cd /path/to/your/bot/directory && source vpn_bot_env/bin/activate && python3 bot.py'"
+# Включение и запуск сервиса
+echo "Включение и запуск сервиса systemd..."
+systemctl daemon-reload
+systemctl enable vpn_tg_bot.service
+systemctl start vpn_tg_bot.service
+
+echo "Бот успешно установлен и запущен как systemd сервис."
+echo "Статус бота можно проверить командой: systemctl status vpn_tg_bot.service"
+echo "Логи бота можно посмотреть командой: journalctl -u vpn_tg_bot.service -f"
+echo "Бот будет автоматически запускаться после перезагрузки сервера."
+
+# Деактивация виртуального окружения
+deactivate
