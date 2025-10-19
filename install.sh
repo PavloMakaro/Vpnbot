@@ -11,8 +11,20 @@ INSTALL_DIR="/opt/vpn_bot"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR" || { echo "Не удалось перейти в директорию $INSTALL_DIR"; exit 1; }
 
+# Остановка старого бота, если он запущен
+echo "Проверка запущенного бота..."
+if systemctl is-active --quiet vpn_tg_bot.service; then
+    echo "Останавливаю работающий бот..."
+    systemctl stop vpn_tg_bot.service
+    sleep 3
+    echo "Старый бот остановлен."
+else
+    echo "Бот не запущен, продолжаем установку..."
+fi
+
 echo "Загрузка файла bot.py из GitHub..."
-wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/ai_studio_code.py # Ваша ссылка на bot.py
+# Обратите внимание: ai_studio_code.py - это имя, которое вы указали для bot.py
+wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/ai_studio_code.py 
 
 if [ $? -ne 0 ]; then
     echo "Ошибка: Не удалось загрузить bot.py. Проверьте путь и доступность файла."
@@ -33,8 +45,8 @@ echo "Активация виртуального окружения..."
 source vpn_bot_env/bin/activate
 
 # Установка зависимостей
-echo "Установка зависимостей..."
-pip install pyTelegramBotAPI # Используем pyTelegramBotAPI
+echo "Установка зависимостей (pyTelegramBotAPI)..."
+pip install pyTelegramBotAPI
 
 # Создание необходимых JSON файлов, если их нет
 echo "Проверка и создание файлов БД..."
@@ -60,20 +72,35 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/vpn_bot_env/bin/python3 $INSTALL_DIR/bot.py
 Restart=always
 RestartSec=5
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 # Включение и запуск сервиса
-echo "Включение и запуск сервиса systemd..."
+echo "Перезагрузка systemd демона..."
 systemctl daemon-reload
+echo "Включение сервиса vpn_tg_bot..."
 systemctl enable vpn_tg_bot.service
+
+echo "Запуск нового бота..."
 systemctl start vpn_tg_bot.service
 
-echo "Бот успешно установлен и запущен как systemd сервис."
+# Проверка статуса
+sleep 2
+if systemctl is-active --quiet vpn_tg_bot.service; then
+    echo "✅ Новый бот успешно запущен!"
+else
+    echo "⚠️  Бот не запустился автоматически. Проверьте логи: journalctl -u vpn_tg_bot.service -f"
+fi
+
+echo ""
+echo "Бот успешно установлен/обновлен как systemd сервис."
 echo "Статус бота можно проверить командой: systemctl status vpn_tg_bot.service"
 echo "Логи бота можно посмотреть командой: journalctl -u vpn_tg_bot.service -f"
+echo "Остановить бота: systemctl stop vpn_tg_bot.service"
+echo "Перезапустить бота: systemctl restart vpn_tg_bot.service"
 echo "Бот будет автоматически запускаться после перезагрузки сервера."
 
 # Деактивация виртуального окружения
