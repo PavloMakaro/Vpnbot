@@ -9,11 +9,12 @@ import subprocess
 import signal
 import sys
 
-TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
+# ЗАПОЛНИТЕ СВОЙ ТОКЕН БОТА
+TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY' # Ваш токен бота
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178 # Пожалуйста, измените этот ID на ваш фактический ID администратора!
-CARD_NUMBER = '2204320690808227'
-CARD_HOLDER = 'Makarov Pavel Alexandrovich (Ozon Bank)'
+# CARD_NUMBER = '2204320690808227' # Удалено: прямая оплата на карту не используется
+# CARD_HOLDER = 'Makarov Pavel Alexandrovich (Ozon Bank)' # Удалено: прямая оплата на карту не используется
 
 SUBSCRIPTION_PERIODS = {
     '1_month': {'price': 50, 'days': 30},
@@ -25,11 +26,22 @@ REFERRAL_BONUS_NEW_USER = 50
 REFERRAL_BONUS_REFERRER = 25
 REFERRAL_BONUS_DAYS = 7
 
-STARS_TO_RUB = 1.5
+# STARS_TO_RUB = 1.5 # Удалено: оплата Telegram Stars не используется
 
 bot = telebot.TeleBot(TOKEN)
 
 MAINTENANCE_MODE = False
+
+# !!! ВАЖНО: ВСТАВЬТЕ СВОЙ provider_token ЮKassa ЗДЕСЬ !!!
+# Этот токен вы получите от @BotFather после подключения вашего бота к ЮKassa
+# Пример: '424924419:LIVE:4'
+YOOKASSA_PROVIDER_TOKEN_LIVE = 'ВСТАВЬТЕ_ВАШ_PROVIDER_TOKEN_ЮKASSA_СЮДА'
+
+# Ваши shop_id и secret_key ЮKassa (для прямого API, если понадобится в будущем)
+# В данной реализации бота используются только для справки и не интегрированы
+YOOKASSA_SHOP_ID = '1172989'
+YOOKASSA_SECRET_KEY = 'live_vgIF4uRtn9lIHm7iTlb1NSxtUwaNat9hEx5xxLUPTNE'
+
 
 def load_data(filename):
     try:
@@ -104,7 +116,7 @@ def admin_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("Управление конфигами", callback_data="admin_manage_configs"),
-        types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
+        types.InlineKeyboardButton("Подтвердить платежи (ЮKassa)", callback_data="admin_confirm_payments"), # Обновлено
         types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"),
         types.InlineKeyboardButton("Управление конфигами пользователей", callback_data="admin_manage_user_configs"),
         types.InlineKeyboardButton("Рассылка", callback_data="admin_broadcast"),
@@ -189,7 +201,6 @@ def buy_vpn_keyboard():
     return markup
 
 def payment_methods_keyboard(period_callback_data, amount, user_balance, partial_payment_done=False):
-    stars_amount = int(amount / STARS_TO_RUB)
     markup = types.InlineKeyboardMarkup(row_width=1)
 
     if not partial_payment_done: # Если это не продолжение частичной оплаты
@@ -200,11 +211,11 @@ def payment_methods_keyboard(period_callback_data, amount, user_balance, partial
             markup.add(types.InlineKeyboardButton(f"💳 Оплата с баланса ({user_balance} ₽) + доплатить {needed_amount_for_balance} ₽", 
                                                 callback_data=f"pay_balance_partial_{period_callback_data}_{amount}"))
 
+    # Добавляем кнопку оплаты через ЮKassa (СБП)
     markup.add(
-        types.InlineKeyboardButton(f"💳 Оплата картой ({amount} ₽)", callback_data=f"pay_card_{period_callback_data}_{amount}"),
-        types.InlineKeyboardButton(f"⭐ Оплата Telegram Stars ({stars_amount} Stars)", callback_data=f"pay_stars_{period_callback_data}_{amount}"),
-        types.InlineKeyboardButton("Назад", callback_data="buy_vpn")
+        types.InlineKeyboardButton(f"🚀 Оплата через ЮKassa (СБП) ({amount} ₽)", callback_data=f"pay_yookassa_{period_callback_data}_{amount}")
     )
+    markup.add(types.InlineKeyboardButton("Назад", callback_data="buy_vpn"))
     return markup
 
 def my_account_keyboard():
@@ -499,68 +510,43 @@ def callback_handler(call):
                                   message_id=call.message.message_id,
                                   reply_markup=payment_methods_keyboard(period_data_key, amount, user_balance))
 
-    elif call.data.startswith("pay_card_"):
-        parts = call.data.split('_')
-        period_data_key = parts[2] + '_' + parts[3]
-        amount = int(parts[4])
-        
-        payment_id = generate_payment_id()
-        payments_db[payment_id] = {
-            'user_id': user_id,
-            'amount': amount,
-            'status': 'pending',
-            'screenshot_id': None,
-            'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'period': period_data_key,
-            'method': 'card',
-            'chat_message_id': call.message.message_id # Сохраняем ID сообщения, чтобы потом его отредактировать
-        }
-        save_data('payments.json', payments_db)
-
-        bot.edit_message_text(f"Для оплаты {amount} ₽ за подписку на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней:"
-                              f"\n\n1. Переведите {amount} ₽ на карту: `{CARD_NUMBER}`"
-                              f"\nДержатель: `{CARD_HOLDER}`"
-                              f"\n\n2. **ОБЯЗАТЕЛЬНО** отправьте скриншот перевода в этот чат."
-                              f"\n\nПосле получения скриншота администратор проверит платеж и подтвердит вашу подписку."
-                              f"\n**Ваш платеж может быть подтвержден с задержкой, ожидайте, пожалуйста.**",
-                              chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              parse_mode='Markdown')
-        
-        user_info = users_db.get(user_id, {})
-        username_str = user_info.get('username', 'N/A')
-        bot.send_message(ADMIN_ID, 
-                         f"🔔 Новый платеж на {amount} ₽ от @{username_str} (ID: `{user_id}`) за {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней. "
-                         f"Ожидает скриншот.\n"
-                         f"Платеж ID: `{payment_id}`", parse_mode='Markdown')
-
-    elif call.data.startswith("pay_stars_"):
+    # Новый обработчик для оплаты через ЮKassa
+    elif call.data.startswith("pay_yookassa_"):
         parts = call.data.split('_')
         period_data_key = parts[2] + '_' + parts[3]
         amount_rub = int(parts[4])
         
-        stars_amount = int(amount_rub / STARS_TO_RUB)
-        
+        # Проверка, что токен ЮKassa установлен
+        if YOOKASSA_PROVIDER_TOKEN_LIVE == 'ВСТАВЬТЕ_ВАШ_PROVIDER_TOKEN_ЮKASSA_СЮДА' or not YOOKASSA_PROVIDER_TOKEN_LIVE:
+            bot.answer_callback_query(call.id, "❌ Интеграция с ЮKassa не настроена. Пожалуйста, обратитесь к администратору.", show_alert=True)
+            return
+
         try:
             bot.send_invoice(
                 chat_id=call.message.chat.id,
                 title=f"Подписка на VPN ({SUBSCRIPTION_PERIODS[period_data_key]['days']} дней)",
-                description=f"Оплата подписки на VPN на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней",
-                invoice_payload=f"stars_payment_{period_data_key}_{amount_rub}", # Payload для successful_payment
-                provider_token='', 
-                currency='XTR', # Валюта для Stars
-                prices=[types.LabeledPrice(label=f"VPN на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней", amount=stars_amount)],
-                start_parameter='vpn_stars_purchase',
+                description=f"Оплата подписки на VPN на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней через ЮKassa (СБП)",
+                invoice_payload=f"yookassa_payment_{period_data_key}_{amount_rub}",
+                provider_token=YOOKASSA_PROVIDER_TOKEN_LIVE, # Ваш токен от BotFather
+                currency='RUB',
+                prices=[types.LabeledPrice(label=f"VPN на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней", amount=amount_rub * 100)], # Сумма в копейках
+                start_parameter='vpn_yookassa_purchase',
                 is_flexible=False,
                 reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Отмена", callback_data="buy_vpn"))
+                # Если нужна фискализация и данные клиента, раскомментируйте и настройте:
+                # need_phone_number=True, # или need_email=True
+                # send_email_to_provider=True, # или send_phone_number_to_provider=True
+                # provider_data='{"receipt": {"items": [{"description": "VPN подписка", "quantity": 1.0, "amount": {"value": ' + str(amount_rub) + '.00, "currency": "RUB"}, "vat_code": 1}]}}'
             )
-            bot.answer_callback_query(call.id, "Открываю счет для оплаты Telegram Stars.", show_alert=False)
+            bot.answer_callback_query(call.id, "Открываю счет для оплаты через ЮKassa (СБП).", show_alert=False)
 
         except Exception as e:
-            print(f"Ошибка при создании платежа Stars: {e}")
-            bot.answer_callback_query(call.id, f"Ошибка при создании платежа Stars: {e}", show_alert=True)
-            bot.edit_message_text(f"Ошибка при создании платежа Stars: {e}\nПожалуйста, используйте оплату картой.",
+            print(f"Ошибка при создании платежа ЮKassa: {e}")
+            bot.answer_callback_query(call.id, f"Ошибка при создании платежа ЮKassa: {e}", show_alert=True)
+            bot.edit_message_text(f"Ошибка при создании платежа ЮKassa: {e}\nПожалуйста, выберите другой способ оплаты.",
                                   chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   reply_markup=payment_methods_keyboard(period_data_key, amount_rub, users_db.get(user_id, {}).get('balance', 0)))
+
 
     # --- Личный кабинет и конфиги ---
     elif call.data == "my_account":
@@ -733,105 +719,32 @@ def callback_handler(call):
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
-    # --- Админ: Подтверждение платежей ---
+    # --- Админ: Подтверждение платежей (обновлено для ЮKassa) ---
     elif call.data == "admin_confirm_payments":
         if str(user_id) == str(ADMIN_ID):
-            pending_payments = {pid: p_data for pid, p_data in payments_db.items() if p_data['status'] == 'pending' and p_data.get('screenshot_id') and p_data['method'] == 'card'}
+            # В данном случае, платежи через ЮKassa подтверждаются автоматически Telegram,
+            # и этот раздел может быть не так актуален, если нет других ручных платежей.
+            # Оставлю его для потенциальных ручных платежей, если они будут добавлены.
             
-            if not pending_payments:
-                bot.edit_message_text("Нет платежей, ожидающих подтверждения со скриншотами.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_keyboard())
-                return
+            # Если нет других ручных методов, можно просто вывести сообщение
+            bot.edit_message_text("Платежи через ЮKassa подтверждаются автоматически. "
+                                  "Этот раздел предназначен для других типов ручных платежей (например, на карту), "
+                                  "если они будут добавлены.", 
+                                  chat_id=call.message.chat.id, message_id=call.message.message_id, 
+                                  reply_markup=admin_keyboard())
             
-            # Отправляем каждое фото отдельно
-            for payment_id, p_data in pending_payments.items():
-                user_payment_info = users_db.get(p_data['user_id'])
-                username_str = user_payment_info.get('username', 'N/A') if user_payment_info else 'N/A'
-                
-                bot.send_photo(ADMIN_ID, p_data['screenshot_id'], 
-                               caption=f"Платеж ID: `{payment_id}`\n"
-                                       f"От: @{username_str} (ID: `{p_data['user_id']}`)\n"
-                                       f"Сумма: {p_data['amount']} ₽\n"
-                                       f"Период: {SUBSCRIPTION_PERIODS.get(p_data['period'], {}).get('days', p_data['period'])} дней\n"
-                                       f"Время: {p_data['timestamp']}",
-                               parse_mode='Markdown', reply_markup=confirm_payments_keyboard(payment_id))
-            
-            # Отправляем сообщение, чтобы пользователь понимал, что список закончился
-            bot.send_message(ADMIN_ID, "👆 Это все платежи со скриншотами, ожидающие подтверждения.", reply_markup=admin_keyboard())
+            # Если вы все же хотите видеть список подтвержденных платежей через ЮKassa,
+            # то можно сделать выборку по status == 'confirmed' и method == 'yookassa'
+            # pending_payments = {pid: p_data for pid, p_data in payments_db.items() if p_data['status'] == 'pending' and p_data.get('screenshot_id') and p_data['method'] == 'card'}
+            # ... (логика вывода и кнопок, если добавятся ручные платежи) ...
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
-    elif call.data.startswith("admin_confirm_"):
-        if str(user_id) == str(ADMIN_ID):
-            payment_id = call.data.replace("admin_confirm_", "")
-            if payment_id in payments_db and payments_db[payment_id]['status'] == 'pending':
-                payments_db[payment_id]['status'] = 'confirmed'
-                
-                target_user_id = payments_db[payment_id]['user_id']
-                period_data_key = payments_db[payment_id]['period']
-                amount = payments_db[payment_id]['amount']
-                
-                if target_user_id in users_db:
-                    current_end = users_db[target_user_id].get('subscription_end')
-                    if current_end:
-                        current_end = datetime.datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S')
-                    else:
-                        current_end = datetime.datetime.now()
-
-                    add_days = SUBSCRIPTION_PERIODS[period_data_key]['days']
-                    
-                    new_end = current_end + datetime.timedelta(days=add_days)
-                    users_db[target_user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
-                    save_data('users.json', users_db)
-
-                    user_info = users_db[target_user_id]
-                    success, result = send_config_to_user(target_user_id, period_data_key, 
-                                                        user_info.get('username', 'user'), 
-                                                        user_info.get('first_name', 'User'))
-                    
-                    if success:
-                        bot.send_message(target_user_id, 
-                                         f"✅ Ваш платеж за подписку на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней подтвержден!\n"
-                                         f"Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
-                                         f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
-                                         parse_mode='Markdown', 
-                                         reply_markup=main_menu_keyboard(target_user_id))
-                    else:
-                        bot.send_message(target_user_id, 
-                                         f"✅ Платеж подтвержден, но возникла ошибка при выдаче конфига: {result}\n"
-                                         f"Обратитесь в поддержку: {ADMIN_USERNAME}",
-                                         parse_mode='Markdown', 
-                                         reply_markup=main_menu_keyboard(target_user_id))
-                
-                save_data('payments.json', payments_db)
-                # Редактируем сообщение с фото
-                bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                         caption=f"{call.message.caption}\n\n✅ Подтвержден администратором.",
-                                         reply_markup=None, parse_mode='Markdown')
-            else:
-                bot.answer_callback_query(call.id, "Платеж уже обработан или не найден.", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
-
-    elif call.data.startswith("admin_reject_"):
-        if str(user_id) == str(ADMIN_ID):
-            payment_id = call.data.replace("admin_reject_", "")
-            if payment_id in payments_db and payments_db[payment_id]['status'] == 'pending':
-                payments_db[payment_id]['status'] = 'rejected'
-                save_data('payments.json', payments_db)
-                
-                target_user_id = payments_db[payment_id]['user_id']
-                bot.send_message(target_user_id, 
-                                 f"❌ Ваш платеж (ID: `{payment_id}`) был отклонен администратором. "
-                                 f"Пожалуйста, свяжитесь с поддержкой ({ADMIN_USERNAME}) для уточнения.", parse_mode='Markdown',
-                                 reply_markup=main_menu_keyboard(target_user_id))
-                
-                bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                         caption=f"{call.message.caption}\n\n❌ Отклонен администратором.",
-                                         reply_markup=None, parse_mode='Markdown')
-            else:
-                bot.answer_callback_query(call.id, "Платеж уже обработан или не найден.", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+    elif call.data.startswith("admin_confirm_") or call.data.startswith("admin_reject_"):
+        # Эти обработчики сейчас не используются для ЮKassa, так как платежи автоматические
+        bot.answer_callback_query(call.id, "Данный тип подтверждения не требуется для платежей ЮKassa.", show_alert=True)
+        # Если вы захотите добавить ручные платежи (например, на карту), то нужно будет реализовать здесь логику
+        # обработки payment_id, аналогично тому, как было раньше.
 
     # --- Админ: Управление пользователями ---
     elif call.data == "admin_manage_users":
@@ -1144,10 +1057,11 @@ def handle_manage_command(message):
     except IndexError:
         bot.send_message(message.chat.id, "❌ Неверный формат команды. Используйте: `/manage_USER_ID`", parse_mode='Markdown')
 
-# --- Обработчики Stars платежей ---
+# --- Обработчики ЮKassa платежей ---
 
-@bot.pre_checkout_query_handler(func=lambda query: True)
-def process_pre_checkout(pre_checkout_query):
+@bot.pre_checkout_query_handler(func=lambda query: query.invoice_payload.startswith("yookassa_payment_"))
+def process_yookassa_pre_checkout(pre_checkout_query):
+    # Здесь можно добавить логику проверки, например, доступности товара, если необходимо
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
@@ -1157,7 +1071,8 @@ def process_successful_payment(message):
     
     payload_parts = payment_info.invoice_payload.split('_')
     
-    if len(payload_parts) >= 5 and payload_parts[0] == 'stars' and payload_parts[1] == 'payment':
+    # Обработка платежей ЮKassa
+    if len(payload_parts) >= 4 and payload_parts[0] == 'yookassa' and payload_parts[1] == 'payment':
         period_data_key = payload_parts[2] + '_' + payload_parts[3]
         original_amount_rub = int(payload_parts[4])
         
@@ -1166,10 +1081,11 @@ def process_successful_payment(message):
             'user_id': user_id,
             'amount': original_amount_rub,
             'status': 'confirmed',
-            'screenshot_id': None,
+            'screenshot_id': None, # Для ЮKassa скриншот не нужен
             'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'period': period_data_key,
-            'method': 'stars'
+            'method': 'yookassa',
+            'provider_payment_charge_id': payment_info.provider_payment_charge_id # ID транзакции в ЮKassa
         }
         save_data('payments.json', payments_db)
         
@@ -1194,7 +1110,7 @@ def process_successful_payment(message):
             if success:
                 bot.send_message(user_id, 
                                  f"✅ Ваш платеж за подписку на {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней подтвержден!\n"
-                                 f"⭐ Оплачено: {payment_info.total_amount} Stars\n"
+                                 f"💳 Оплачено: {original_amount_rub} ₽ через ЮKassa (СБП)\n"
                                  f"📅 Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
                                  f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
                                  parse_mode='Markdown', 
@@ -1207,48 +1123,34 @@ def process_successful_payment(message):
                                  reply_markup=main_menu_keyboard(user_id))
         
         bot.send_message(ADMIN_ID, 
-                         f"✅ Успешная оплата Stars: {payment_info.total_amount} Stars\n"
-                         f"На сумму: {original_amount_rub} ₽\n"
+                         f"✅ Успешная оплата ЮKassa (СБП): {original_amount_rub} ₽\n"
                          f"От: @{message.from_user.username} (ID: `{user_id}`)\n"
-                         f"Период: {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней",
+                         f"Период: {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней\n"
+                         f"ID транзакции ЮKassa: `{payment_info.provider_payment_charge_id}`",
+                         parse_mode='Markdown')
+    else:
+        # Если вдруг придет successful_payment от другого провайдера (если они были бы активны)
+        bot.send_message(user_id, 
+                         f"✅ Платеж успешно обработан. Спасибо за покупку!\n"
+                         f"ID платежа Telegram: `{payment_info.telegram_payment_charge_id}`",
+                         parse_mode='Markdown', 
+                         reply_markup=main_menu_keyboard(user_id))
+        bot.send_message(ADMIN_ID, 
+                         f"Получен успешный платеж Telegram (не ЮKassa) от @{message.from_user.username} (ID: `{user_id}`).",
                          parse_mode='Markdown')
 
-# --- Обработчик скриншотов ---
+# --- Обработчик скриншотов (удален, так как прямые платежи на карту убраны) ---
 
-@bot.message_handler(content_types=['photo'])
-def handle_screenshot(message):
-    user_id = str(message.from_user.id)
-    
-    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
-        bot.send_message(message.chat.id, "Бот находится на техническом обслуживании. Пожалуйста, попробуйте позже.")
-        return
-
-    pending_payment_id = None
-    for pid, p_data in payments_db.items():
-        if p_data['user_id'] == user_id and p_data['status'] == 'pending' and p_data.get('screenshot_id') is None and p_data['method'] == 'card':
-            pending_payment_id = pid
-            break
-    
-    if pending_payment_id:
-        payments_db[pending_payment_id]['screenshot_id'] = message.photo[-1].file_id
-        save_data('payments.json', payments_db)
-        
-        bot.send_message(message.chat.id, "Скриншот получен! Ожидайте подтверждения от администратора. "
-                                         "Ваш платеж может быть подтвержден с задержкой.",
-                                         reply_markup=main_menu_keyboard(user_id)) 
-        
-        user_info = users_db.get(user_id, {})
-        username_str = user_info.get('username', 'N/A')
-        
-        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, 
-                       caption=f"❗️ Новый скриншот платежа ID: `{pending_payment_id}`\n"
-                               f"От: @{username_str} (ID: `{user_id}`)\n"
-                               f"Сумма: {payments_db[pending_payment_id]['amount']} ₽\n"
-                               f"Период: {SUBSCRIPTION_PERIODS.get(payments_db[pending_payment_id]['period'], {}).get('days', 'N/A')} дней",
-                       parse_mode='Markdown', reply_markup=confirm_payments_keyboard(pending_payment_id))
-    else:
-        bot.send_message(message.chat.id, "Я не ожидал скриншот платежа. У вас есть незавершенные платежи картой?",
-                                         reply_markup=main_menu_keyboard(user_id))
+# @bot.message_handler(content_types=['photo'])
+# def handle_screenshot(message):
+#     user_id = str(message.from_user.id)
+#     
+#     if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+#         bot.send_message(message.chat.id, "Бот находится на техническом обслуживании. Пожалуйста, попробуйте позже.")
+#         return
+# 
+#     bot.send_message(message.chat.id, "Я не ожидаю скриншотов платежей. Для оплаты используйте предложенные способы.",
+#                                          reply_markup=main_menu_keyboard(user_id))
 
 # --- Функции для next_step_handler (Admin) ---
 
@@ -1397,132 +1299,4 @@ def process_edit_balance(message, target_user_id):
                         f"💰 Администратор изменил ваш баланс.\n"
                         f"Новый баланс: {new_balance} ₽", parse_mode='Markdown', reply_markup=main_menu_keyboard(target_user_id))
     except ValueError:
-        bot.send_message(message.chat.id, "❌ Неверный формат баланса. Введите целое число.", reply_markup=user_action_keyboard(target_user_id))
-
-def process_edit_subscription(message, target_user_id):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
-    
-    new_subscription = message.text.strip()
-    if new_subscription.lower() == 'нет':
-        users_db[target_user_id]['subscription_end'] = None
-        save_data('users.json', users_db)
-        
-        bot.send_message(message.chat.id, f"✅ Подписка пользователя `{target_user_id}` удалена.", parse_mode='Markdown', reply_markup=user_action_keyboard(target_user_id))
-        bot.send_message(target_user_id, "❌ Ваша подписка была удалена администратором.", parse_mode='Markdown', reply_markup=main_menu_keyboard(target_user_id))
-    else:
-        try:
-            new_end = datetime.datetime.strptime(new_subscription, '%d.%m.%Y %H:%M')
-            users_db[target_user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
-            save_data('users.json', users_db)
-            
-            bot.send_message(message.chat.id, 
-                            f"✅ Подписка пользователя `{target_user_id}` установлена до {new_end.strftime('%d.%m.%Y %H:%M')}.", parse_mode='Markdown', reply_markup=user_action_keyboard(target_user_id))
-            bot.send_message(target_user_id, 
-                            f"✅ Администратор изменил срок вашей подписки.\n"
-                            f"Новая дата окончания: {new_end.strftime('%d.%m.%Y %H:%M')}", parse_mode='Markdown', reply_markup=main_menu_keyboard(target_user_id))
-        except ValueError:
-            bot.send_message(message.chat.id, "❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ ЧЧ:ММ", reply_markup=user_action_keyboard(target_user_id))
-
-def process_delete_user_config(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
-    
-    try:
-        parts = message.text.strip().split()
-        if len(parts) != 2:
-            raise ValueError("Неверное количество аргументов")
-
-        user_id = parts[0]
-        config_index = int(parts[1]) - 1 
-        
-        if user_id in users_db:
-            used_configs = users_db[user_id].get('used_configs', [])
-            if 0 <= config_index < len(used_configs):
-                deleted_config = used_configs.pop(config_index)
-                users_db[user_id]['used_configs'] = used_configs
-                save_data('users.json', users_db)
-                
-                period_name = SUBSCRIPTION_PERIODS.get(deleted_config.get('period'), {}).get('days', deleted_config.get('period', 'N/A'))
-                bot.send_message(message.chat.id, 
-                                f"✅ Конфиг пользователя `{user_id}` удален:\n"
-                                f"Имя: {deleted_config.get('config_name', 'N/A')}\n"
-                                f"Период: {period_name} дней", 
-                                parse_mode='Markdown', reply_markup=user_configs_management_keyboard())
-                
-                bot.send_message(user_id, 
-                                f"❌ Ваш конфиг '{deleted_config.get('config_name', 'N/A')}' был удален администратором.", parse_mode='Markdown', reply_markup=main_menu_keyboard(user_id))
-            else:
-                bot.send_message(message.chat.id, "❌ Неверный номер конфига. Пожалуйста, проверьте и попробуйте снова.", parse_mode='Markdown', reply_markup=user_configs_management_keyboard())
-        else:
-            bot.send_message(message.chat.id, "❌ Пользователь не найден.", reply_markup=user_configs_management_keyboard())
-    except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "❌ Неверный формат. Используйте: `ID_пользователя номер_конфига`", parse_mode='Markdown', reply_markup=user_configs_management_keyboard())
-
-def process_reissue_config_get_user_id(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
-    
-    target_user_id = message.text.strip()
-    if target_user_id in users_db:
-        user_info = users_db[target_user_id]
-        current_admin_action_data[str(message.chat.id)] = {'target_user_id': target_user_id}
-        
-        bot.send_message(message.chat.id, 
-                        f"Пользователь: {user_info.get('first_name', 'N/A')} (@{user_info.get('username', 'N/A')})\n"
-                        f"Выберите период для перевыдачи конфига:", 
-                        parse_mode='Markdown', 
-                        reply_markup=choose_period_keyboard("reissue_config", back_callback="admin_manage_user_configs"))
-    else:
-        bot.send_message(message.chat.id, "❌ Пользователь не найден. Пожалуйста, введите корректный ID.", reply_markup=user_configs_management_keyboard())
-
-def process_broadcast_message(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return
-    
-    broadcast_text = message.text
-    sent_count = 0
-    failed_count = 0
-    
-    bot.send_message(message.chat.id, "📢 Начинаю рассылку...")
-    
-    for uid in users_db.keys():
-        try:
-            bot.send_message(uid, f"📢 **Объявление от администратора:**\n\n{broadcast_text}", parse_mode='Markdown')
-            sent_count += 1
-            time.sleep(0.1) 
-        except Exception as e:
-            print(f"Не удалось отправить сообщение пользователю {uid}: {e}")
-            failed_count += 1
-    
-    bot.send_message(message.chat.id, 
-                    f"✅ Рассылка завершена!\n"
-                    f"📤 Отправлено: {sent_count}\n"
-                    f"❌ Не отправлено: {failed_count}",
-                    reply_markup=admin_keyboard())
-
-# --- graceful shutdown ---
-def signal_handler(signum, frame):
-    print(f"Получен сигнал {signum}. Корректно останавливаю бота...")
-    bot.stop_polling()
-    print("Бот остановлен.")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-if __name__ == "__main__":
-    print("Бот запускается...")
-    if ADMIN_ID == 8320218178: 
-        print("\n" + "="*80)
-        print("ВНИМАНИЕ: ADMIN_ID не изменен. Пожалуйста, замените '8320218178' на ваш фактический Telegram ID в коде.")
-        print("Без этого админ-панель не будет работать корректно!")
-        print("Чтобы узнать свой ID, напишите @userinfobot в Telegram.")
-        print("="*80 + "\n")
-    try:
-        bot.polling(none_stop=True, interval=0, timeout=60)
-    except KeyboardInterrupt:
-        print("Бот остановлен пользователем (Ctrl+C).")
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
-        print("Бот будет перезапущен, если настроен через systemd.")
+        bot.se
