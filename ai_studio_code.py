@@ -11,7 +11,8 @@ import sys
 
 TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
 ADMIN_USERNAME = '@Gl1ch555'
-ADMIN_ID = 8320218178 # Замените на ваш фактический ID администратора
+ADMIN_ID = 8320218178 # ОБЯЗАТЕЛЬНО ЗАМЕНИТЕ НА ВАШ ФАКТИЧЕСКИЙ ID АДМИНИСТРАТОРА
+
 CARD_NUMBER = '2204320690808227'
 CARD_HOLDER = 'Makarov Pavel Alexandrovich (Ozon Bank)'
 
@@ -27,6 +28,8 @@ STARS_TO_RUB = 1.5
 
 bot = telebot.TeleBot(TOKEN)
 
+MAINTENANCE_MODE = False
+
 def load_data(filename):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -36,20 +39,11 @@ def load_data(filename):
 
 def save_data(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        json.dump(f, data, indent=4, ensure_ascii=False)
 
 users_db = load_data('users.json')
 configs_db = load_data('configs.json')
 payments_db = load_data('payments.json')
-
-# Сброс всех конфигов при запуске для новой инициализации по запросу
-# Если вы не хотите сбрасывать конфиги при каждом запуске, закомментируйте эти строки
-configs_db = {
-    '1_month': [],
-    '2_months': [],
-    '3_months': []
-}
-save_data('configs.json', configs_db)
 
 def generate_payment_id():
     return str(int(time.time() * 100000))
@@ -95,10 +89,20 @@ def admin_keyboard():
     markup.add(
         types.InlineKeyboardButton("Управление конфигами", callback_data="admin_manage_configs"),
         types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
-        types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"), # Объединено
+        types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"),
         types.InlineKeyboardButton("Управление конфигами пользователей", callback_data="admin_manage_user_configs"),
         types.InlineKeyboardButton("Рассылка", callback_data="admin_broadcast"),
+        types.InlineKeyboardButton("Режим техобслуживания", callback_data="admin_maintenance_mode"),
         types.InlineKeyboardButton("Назад в меню", callback_data="main_menu")
+    )
+    return markup
+
+def maintenance_mode_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    status = "Включить" if not MAINTENANCE_MODE else "Выключить"
+    markup.add(
+        types.InlineKeyboardButton(f"{status} техобслуживание", callback_data="admin_toggle_maintenance"),
+        types.InlineKeyboardButton("Назад в админку", callback_data="admin_panel")
     )
     return markup
 
@@ -141,7 +145,7 @@ def user_configs_management_keyboard():
     )
     return markup
 
-def users_management_keyboard(): # Обновленное меню управления пользователями
+def users_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("Активные пользователи", callback_data="admin_active_users"),
@@ -158,7 +162,7 @@ def user_action_keyboard(user_id):
         types.InlineKeyboardButton("Изменить баланс", callback_data=f"admin_edit_balance_{user_id}"),
         types.InlineKeyboardButton("Изменить подписку", callback_data=f"admin_edit_subscription_{user_id}"),
         types.InlineKeyboardButton("Просмотреть конфиги", callback_data=f"admin_view_user_configs_{user_id}"),
-        types.InlineKeyboardButton("Назад к списку", callback_data="admin_manage_users") # Возврат в общее управление пользователями
+        types.InlineKeyboardButton("Назад к списку", callback_data="admin_manage_users")
     )
     return markup
 
@@ -217,7 +221,6 @@ def my_configs_keyboard(user_id):
     user_info = users_db.get(str(user_id), {})
     subscription_end = user_info.get('subscription_end')
     
-    # Добавил проверку на активную подписку перед предложением получить конфиг
     if subscription_end:
         end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
         if end_date > datetime.datetime.now():
@@ -237,24 +240,7 @@ def send_config_to_user(user_id, period, username, first_name):
     if not config:
         return False, "Нет доступных конфигов для этого периода"
     
-    mark_config_used(period, config['link'])
-    
     config_name = f"{first_name} ({username}) - {period.replace('_', ' ')}"
-    
-    if 'used_configs' not in users_db[str(user_id)]:
-        users_db[str(user_id)]['used_configs'] = []
-    
-    used_config = {
-        'config_name': config['name'],
-        'config_link': config['link'],
-        'config_code': config['code'],
-        'period': period,
-        'issue_date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'user_name': f"{first_name} (@{username})"
-    }
-    
-    users_db[str(user_id)]['used_configs'].append(used_config)
-    save_data('users.json', users_db)
     
     try:
         bot.send_message(user_id, f"🔐 **Ваш VPN конфиг**\n\n"
@@ -263,13 +249,37 @@ def send_config_to_user(user_id, period, username, first_name):
                                  f"🔗 **Ссылка на конфиг:** {config['link']}\n\n"
                                  f"💾 _Сохраните этот конфиг для использования_",
                          parse_mode='Markdown')
+        
+        mark_config_used(period, config['link'])
+        
+        if 'used_configs' not in users_db[str(user_id)]:
+            users_db[str(user_id)]['used_configs'] = []
+        
+        used_config = {
+            'config_name': config['name'],
+            'config_link': config['link'],
+            'config_code': config['code'],
+            'period': period,
+            'issue_date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'user_name': f"{first_name} (@{username})"
+        }
+        
+        users_db[str(user_id)]['used_configs'].append(used_config)
+        save_data('users.json', users_db)
+
         return True, config
+    except telebot.apihelper.ApiException as e:
+        return False, f"Ошибка отправки сообщения Telegram API: {e}. Конфиг не был выдан."
     except Exception as e:
-        return False, f"Ошибка отправки: {e}"
+        return False, f"Неизвестная ошибка при отправке конфига: {e}. Конфиг не был выдан."
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
+    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+        bot.send_message(message.chat.id, "Бот находится на техобслуживании. Попробуйте позже.")
+        return
+
     username = message.from_user.username if message.from_user.username else 'N/A'
     first_name = message.from_user.first_name if message.from_user.first_name else 'N/A'
 
@@ -324,6 +334,10 @@ def send_welcome(message):
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     user_id = str(call.from_user.id)
+    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+        bot.answer_callback_query(call.id, "Бот находится на техобслуживании.", show_alert=True)
+        return
+
     if call.data == "main_menu":
         bot.edit_message_text("Главное меню:", chat_id=call.message.chat.id, message_id=call.message.message_id,
                               reply_markup=main_menu_keyboard(user_id))
@@ -388,13 +402,13 @@ def callback_handler(call):
             
             new_end = current_end + datetime.timedelta(days=add_days)
             users_db[user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
-            save_data('users.json', users_db)
-
+            
             success, result = send_config_to_user(user_id, period_data, 
                                                 user_info.get('username', 'user'), 
                                                 user_info.get('first_name', 'User'))
             
             if success:
+                save_data('users.json', users_db)
                 bot.edit_message_text(f"✅ Оплата прошла успешно!\n"
                                       f"💳 Списано с баланса: {amount} ₽\n"
                                       f"💰 Остаток на балансе: {user_balance - amount} ₽\n"
@@ -403,8 +417,11 @@ def callback_handler(call):
                                       chat_id=call.message.chat.id, 
                                       message_id=call.message.message_id)
             else:
+                users_db[user_id]['balance'] = user_balance # Откатываем баланс, если конфиг не был выдан
+                users_db[user_id]['subscription_end'] = current_end.strftime('%Y-%m-%d %H:%M:%S') if isinstance(current_end, datetime.datetime) else None
+                save_data('users.json', users_db)
                 bot.edit_message_text(f"✅ Оплата прошла успешно, но возникла ошибка при выдаче конфига: {result}\n"
-                                      f"Обратитесь в поддержку: @Gl1ch555",
+                                      f"Средства возвращены на баланс. Обратитесь в поддержку: {ADMIN_USERNAME}",
                                       chat_id=call.message.chat.id, 
                                       message_id=call.message.message_id)
         else:
@@ -449,12 +466,6 @@ def callback_handler(call):
                               chat_id=call.message.chat.id, message_id=call.message.message_id,
                               parse_mode='Markdown')
         
-        # Уведомление администратора о новом платеже, ожидающем скриншот
-        bot.send_message(ADMIN_ID, 
-                         f"🔔 Новый платеж на {amount} ₽ от @{call.from_user.username} (ID: {user_id}) за {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}. "
-                         f"Ожидает скриншот.", 
-                         reply_markup=main_menu_keyboard(ADMIN_ID)) # Можно использовать другое админское меню, но главное меню тоже подойдет
-
     elif call.data.startswith("pay_stars_"):
         period_data = call.data.replace("pay_stars_", "")
         amount = 0
@@ -468,14 +479,14 @@ def callback_handler(call):
         stars_amount = int(amount / STARS_TO_RUB)
         
         try:
-            prices = [types.LabeledPrice(label=f"VPN подписку на {period_data.replace('_', ' ')}", amount=stars_amount)]
+            prices = [types.LabeledPrice(label=f"VPN подписка на {period_data.replace('_', ' ')}", amount=stars_amount)]
             
             bot.send_invoice(
                 chat_id=call.message.chat.id,
                 title=f"VPN подписка на {period_data.replace('_', ' ')}",
                 description=f"VPN подписка на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}",
-                provider_token='', # Здесь должен быть токен вашего провайдера Stars (если используете)
-                currency='XTR', # Валюта Telegram Stars
+                provider_token='', 
+                currency='XTR',
                 prices=prices,
                 start_parameter=f'vpn_subscription_{period_data}',
                 invoice_payload=f'vpn_subscription_{period_data}_{user_id}'
@@ -529,7 +540,7 @@ def callback_handler(call):
             bot.send_message(call.message.chat.id, f"❌ {result}")
 
     elif call.data == "support":
-        bot.edit_message_text(f"Для связи с поддержкой напишите @Gl1ch555.\n"
+        bot.edit_message_text(f"Для связи с поддержкой напишите {ADMIN_USERNAME}.\n"
                               f"Постараемся ответить как можно скорее.",
                               chat_id=call.message.chat.id, message_id=call.message.message_id,
                               reply_markup=main_menu_keyboard(user_id))
@@ -566,6 +577,31 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
             bot.edit_message_text("Главное меню:", chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   reply_markup=main_menu_keyboard(user_id))
+
+    elif call.data == "admin_maintenance_mode":
+        if str(user_id) == str(ADMIN_ID):
+            status = "Включен" if MAINTENANCE_MODE else "Выключен"
+            bot.edit_message_text(f"Режим техобслуживания: **{status}**\n\n"
+                                 f"В режиме техобслуживания бот отвечает только администратору. Все остальные пользователи получают уведомление.",
+                                 chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                 parse_mode='Markdown',
+                                 reply_markup=maintenance_mode_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data == "admin_toggle_maintenance":
+        if str(user_id) == str(ADMIN_ID):
+            global MAINTENANCE_MODE
+            MAINTENANCE_MODE = not MAINTENANCE_MODE
+            status = "Включен" if MAINTENANCE_MODE else "Выключен"
+            bot.edit_message_text(f"Режим техобслуживания: **{status}**\n\n"
+                                 f"В режиме техобслуживания бот отвечает только администратору. Все остальные пользователи получают уведомление.",
+                                 chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                 parse_mode='Markdown',
+                                 reply_markup=maintenance_mode_keyboard())
+            bot.answer_callback_query(call.id, f"Режим техобслуживания {status.lower()}.")
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
     elif call.data == "admin_manage_configs":
         if str(user_id) == str(ADMIN_ID):
@@ -640,7 +676,6 @@ def callback_handler(call):
                 bot.edit_message_text("Нет платежей, ожидающих подтверждения со скриншотами.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_keyboard())
                 return
             
-            # Отправляем все скриншоты по очереди
             for payment_id, p_data in pending_payments.items():
                 user_payment_info = users_db.get(p_data['user_id'])
                 username_str = user_payment_info.get('username', 'N/A') if user_payment_info else 'N/A'
@@ -680,23 +715,25 @@ def callback_handler(call):
                     
                     new_end = current_end + datetime.timedelta(days=add_days)
                     users_db[target_user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
-                    save_data('users.json', users_db)
-
+                    
                     user_info = users_db[target_user_id]
                     success, result = send_config_to_user(target_user_id, period_data, 
                                                         user_info.get('username', 'user'), 
                                                         user_info.get('first_name', 'User'))
                     
                     if success:
+                        save_data('users.json', users_db)
                         bot.send_message(target_user_id, 
                                          f"✅ Ваш платеж за подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')} подтвержден!\n"
                                          f"Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
                                          f"Конфиг уже выдан! Проверьте сообщения выше.",
                                          reply_markup=main_menu_keyboard(target_user_id))
                     else:
+                        users_db[target_user_id]['subscription_end'] = current_end.strftime('%Y-%m-%d %H:%M:%S') if isinstance(current_end, datetime.datetime) else None
+                        save_data('users.json', users_db)
                         bot.send_message(target_user_id, 
                                          f"✅ Платеж подтвержден, но возникла ошибка при выдаче конфига: {result}\n"
-                                         f"Обратитесь в поддержку: @Gl1ch555")
+                                         f"Срок подписки не был изменен. Обратитесь в поддержку: {ADMIN_USERNAME}")
                 
                 save_data('payments.json', payments_db)
                 bot.edit_message_text(f"Платеж {payment_id} подтвержден.", chat_id=call.message.chat.id, message_id=call.message.message_id)
@@ -715,7 +752,7 @@ def callback_handler(call):
                 target_user_id = payments_db[payment_id]['user_id']
                 bot.send_message(target_user_id, 
                                  f"❌ Ваш платеж (ID: {payment_id}) был отклонен администратором. "
-                                 f"Пожалуйста, свяжитесь с поддержкой (@Gl1ch555) для уточнения.",
+                                 f"Пожалуйста, свяжитесь с поддержкой ({ADMIN_USERNAME}) для уточнения.",
                                  reply_markup=main_menu_keyboard(target_user_id))
                 
                 bot.edit_message_text(f"Платеж {payment_id} отклонен.", chat_id=call.message.chat.id, message_id=call.message.message_id)
@@ -723,9 +760,6 @@ def callback_handler(call):
                 bot.edit_message_text("Платеж уже обработан или не найден.", chat_id=call.message.chat.id, message_id=call.message.message_id)
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
-
-    # Удален `admin_users_list`, теперь его функционал частично перенесен в `admin_all_users`
-    # и доступен через общее меню "Управление пользователями"
 
     elif call.data == "admin_manage_users":
         if str(user_id) == str(ADMIN_ID):
@@ -756,7 +790,7 @@ def callback_handler(call):
                         message_text += f"📅 Подписка до: {sub_end.strftime('%d.%m.%Y %H:%M')}\n"
                         message_text += f"🤝 Рефералов: {u_data.get('referrals_count', 0)}\n"
                         message_text += f"📎 Приглашен: {referred_by}\n"
-                        message_text += f"⚡ Действия: /manage_{uid}\n\n" # Добавлена команда для быстрого управления
+                        message_text += f"⚡ Действия: /manage_{uid}\n\n"
             
             if active_count == 0:
                 message_text = "❌ Нет активных пользователей."
@@ -781,7 +815,7 @@ def callback_handler(call):
                 message_text += f"{i}. **{u_data.get('first_name', 'N/A')}** (@{u_data.get('username', 'N/A')})\n"
                 message_text += f"   🆔: `{uid}` | {sub_status}\n"
                 message_text += f"   💰: {u_data.get('balance', 0)} ₽ | 🤝: {u_data.get('referrals_count', 0)}\n"
-                message_text += f"   ⚡ /manage_{uid}\n\n" # Добавлена команда для быстрого управления
+                message_text += f"   ⚡ /manage_{uid}\n\n"
             
             bot.send_message(call.message.chat.id, message_text, parse_mode='Markdown')
         else:
@@ -854,7 +888,7 @@ def callback_handler(call):
                 used_configs = user_data.get('used_configs', [])
                 if used_configs:
                     message_text += f"👤 **Пользователь:** {user_data.get('first_name', 'N/A')} (@{user_data.get('username', 'N/A')}) ID: {uid}\n"
-                    for i, config in enumerate(used_configs, 1): # Исправлен отсчет для читаемости
+                    for i, config in enumerate(used_configs, 1):
                         config_count += 1
                         message_text += f"  {i}. {config['config_name']} ({config['period']})\n"
                         message_text += f"     Ссылка: {config['config_link']}\n"
@@ -894,7 +928,6 @@ def handle_manage_command(message):
         return
     
     try:
-        # Проверяем, что команда состоит из двух частей, например "/manage_12345"
         parts = message.text.split('_')
         if len(parts) < 2:
             bot.send_message(message.chat.id, "❌ Неверный формат команды. Используйте: /manage_USER_ID")
@@ -935,6 +968,9 @@ def process_pre_checkout(pre_checkout_query):
 @bot.message_handler(content_types=['successful_payment'])
 def process_successful_payment(message):
     user_id = str(message.from_user.id)
+    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+        return
+        
     payment_info = message.successful_payment
     
     payload_parts = payment_info.invoice_payload.split('_')
@@ -944,14 +980,13 @@ def process_successful_payment(message):
         payment_id = generate_payment_id()
         payments_db[payment_id] = {
             'user_id': user_id,
-            'amount': payment_info.total_amount / 100 * STARS_TO_RUB, # Stars amount is in smallest units
+            'amount': payment_info.total_amount / 100 * STARS_TO_RUB,
             'status': 'confirmed',
             'screenshot_id': None,
             'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'period': period_data,
             'method': 'stars'
         }
-        save_data('payments.json', payments_db)
         
         if user_id in users_db:
             current_end = users_db[user_id].get('subscription_end')
@@ -967,14 +1002,15 @@ def process_successful_payment(message):
             
             new_end = current_end + datetime.timedelta(days=add_days)
             users_db[user_id]['subscription_end'] = new_end.strftime('%Y-%m-%d %H:%M:%S')
-            save_data('users.json', users_db)
-
+            
             user_info = users_db[user_id]
             success, result = send_config_to_user(user_id, period_data, 
                                                 user_info.get('username', 'user'), 
                                                 user_info.get('first_name', 'User'))
             
             if success:
+                save_data('users.json', users_db)
+                save_data('payments.json', payments_db)
                 bot.send_message(user_id, 
                                  f"✅ Ваш платеж за подписку на {period_data.replace('_', ' ').replace('month', 'месяц').replace('s', 'а')} подтвержден!\n"
                                  f"⭐ Оплачено: {payment_info.total_amount / 100} Stars\n"
@@ -982,9 +1018,11 @@ def process_successful_payment(message):
                                  f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
                                  reply_markup=main_menu_keyboard(user_id))
             else:
+                users_db[user_id]['subscription_end'] = current_end.strftime('%Y-%m-%d %H:%M:%S') if isinstance(current_end, datetime.datetime) else None
+                save_data('users.json', users_db)
                 bot.send_message(user_id, 
                                  f"✅ Платеж подтвержден, но возникла ошибка при выдаче конфига: {result}\n"
-                                 f"Обратитесь в поддержку: @Gl1ch555")
+                                 f"Срок подписки не был изменен. Обратитесь в поддержку: {ADMIN_USERNAME}")
         
         bot.send_message(ADMIN_ID, 
                          f"✅ Успешная оплата Stars: {payment_info.total_amount / 100} Stars\n"
@@ -994,6 +1032,10 @@ def process_successful_payment(message):
 @bot.message_handler(content_types=['photo'])
 def handle_screenshot(message):
     user_id = str(message.from_user.id)
+    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+        bot.send_message(message.chat.id, "Бот находится на техобслуживании.")
+        return
+
     pending_payment = None
     for payment_id, p_data in payments_db.items():
         if p_data['user_id'] == user_id and p_data['status'] == 'pending' and p_data['screenshot_id'] is None:
@@ -1007,7 +1049,6 @@ def handle_screenshot(message):
         bot.send_message(message.chat.id, "Скриншот получен! Ожидайте подтверждения от администратора. "
                                          "Ваш платеж может быть подтвержден с задержкой.")
         
-        # Уведомление админа с кнопками подтверждения/отклонения
         user_info = users_db.get(user_id, {})
         username_str = user_info.get('username', 'N/A')
         
@@ -1017,6 +1058,18 @@ def handle_screenshot(message):
                                f"Сумма: {payments_db[pending_payment]['amount']} ₽\n"
                                f"Период: {payments_db[pending_payment]['period'].replace('_', ' ').replace('month', 'месяц').replace('s', 'а')}",
                        reply_markup=confirm_payments_keyboard(pending_payment))
+    else:
+        bot.send_message(message.chat.id, "Я не ожидал скриншот. Если вы отправляли платеж, выберите способ оплаты и следуйте инструкциям.")
+
+@bot.message_handler(content_types=['text'])
+def handle_text_messages(message):
+    user_id = str(message.from_user.id)
+    if MAINTENANCE_MODE and user_id != str(ADMIN_ID):
+        bot.send_message(message.chat.id, "Бот находится на техобслуживании. Попробуйте позже.")
+        return
+    
+    bot.send_message(message.chat.id, "Я вас не понял. Пожалуйста, используйте кнопки меню или команду /start.",
+                     reply_markup=main_menu_keyboard(message.from_user.id))
 
 def process_add_configs_bulk(message, period):
     if str(message.from_user.id) != str(ADMIN_ID):
@@ -1036,7 +1089,6 @@ def process_add_configs_bulk(message, period):
             
             config_data = {
                 'name': config_name,
-                'image': None, # Удаляем поле 'image' если оно не используется
                 'code': f"{username}_{len(configs_db[period]) + 1}",
                 'link': link,
                 'added_by': username,
@@ -1057,7 +1109,7 @@ def process_delete_config(message):
     try:
         parts = message.text.strip().split()
         period = parts[0]
-        config_id = int(parts[1]) - 1 # -1 потому что пользователь вводит начиная с 1
+        config_id = int(parts[1]) - 1
         
         if period in configs_db and 0 <= config_id < len(configs_db[period]):
             deleted_config = configs_db[period].pop(config_id)
@@ -1146,7 +1198,6 @@ def process_edit_balance(message, target_user_id):
                         f"✅ Баланс пользователя {target_user_id} изменен:\n"
                         f"С {old_balance} ₽ на {new_balance} ₽")
         
-        # Уведомляем пользователя об изменении баланса
         bot.send_message(target_user_id, 
                         f"💰 Администратор изменил ваш баланс.\n"
                         f"Новый баланс: {new_balance} ₽")
@@ -1159,7 +1210,6 @@ def process_edit_subscription(message, target_user_id):
     
     new_subscription = message.text.strip()
     if new_subscription.lower() == 'нет':
-        # old_subscription = users_db[target_user_id].get('subscription_end') # Можно удалить, если не используется
         users_db[target_user_id]['subscription_end'] = None
         save_data('users.json', users_db)
         
@@ -1233,17 +1283,27 @@ def process_reissue_period(message, user_id):
     period = message.text.strip()
     if period in ['1_month', '2_months', '3_months']:
         user_info = users_db[user_id]
+        
+        days_left = get_subscription_days_left(user_id)
+        if days_left <= 0:
+            bot.send_message(message.chat.id, "❌ У пользователя нет активной подписки или подписка истекла. Перевыдача невозможна.", 
+                             reply_markup=user_configs_management_keyboard())
+            return
+
         success, result = send_config_to_user(user_id, period, 
                                             user_info.get('username', 'user'), 
                                             user_info.get('first_name', 'User'))
         
         if success:
-            bot.send_message(message.chat.id, f"✅ Конфиг успешно перевыдан пользователю {user_id}")
+            bot.send_message(message.chat.id, f"✅ Конфиг успешно перевыдан пользователю {user_id}", 
+                             reply_markup=user_configs_management_keyboard())
             bot.send_message(user_id, f"✅ Администратор перевыдал вам конфиг на период {period.replace('_', ' ')}. Проверьте сообщения выше.")
         else:
-            bot.send_message(message.chat.id, f"❌ Ошибка при перевыдаче: {result}")
+            bot.send_message(message.chat.id, f"❌ Ошибка при перевыдаче: {result}", 
+                             reply_markup=user_configs_management_keyboard())
     else:
-        bot.send_message(message.chat.id, "❌ Неверный период. Используйте: 1_month, 2_months, 3_months")
+        bot.send_message(message.chat.id, "❌ Неверный период. Используйте: 1_month, 2_months, 3_months", 
+                         reply_markup=user_configs_management_keyboard())
 
 def process_broadcast_message(message):
     if str(message.from_user.id) != str(ADMIN_ID):
@@ -1257,9 +1317,9 @@ def process_broadcast_message(message):
     
     for uid in users_db.keys():
         try:
-            bot.send_message(uid, f"📢 **Объявление от администратора:**\n\n{broadcast_text}", parse_mode='Markdown')
+            bot.send_message(uid, f"📢 **Объявление от администратора:**\n\n{telebot.formatting.escape_markdown(broadcast_text)}", parse_mode='MarkdownV2')
             sent_count += 1
-            time.sleep(0.1) # Небольшая задержка, чтобы избежать лимитов Telegram
+            time.sleep(0.1)
         except Exception as e:
             print(f"Не удалось отправить сообщение пользователю {uid}: {e}")
             failed_count += 1
@@ -1281,13 +1341,16 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 if __name__ == "__main__":
     print("Бот запускается...")
+    if ADMIN_ID == 8320218178:
+        print("\n!!!!!!!!!!!!! ВНИМАНИЕ !!!!!!!!!!!!!")
+        print("Ваш ADMIN_ID не изменен. Пожалуйста, замените '8320218178' на ваш фактический ID администратора в коде.")
+        print("Без этого админ-панель не будет работать корректно.")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+
     try:
-        # Убедимся, что ADMIN_ID корректно установлен
-        if ADMIN_ID == 8320218178:
-            print("Внимание: ADMIN_ID не изменен. Пожалуйста, замените его на ваш фактический ID в файле.")
         bot.polling(none_stop=True, interval=0, timeout=60)
     except KeyboardInterrupt:
         print("Бот остановлен пользователем (Ctrl+C).")
     except Exception as e:
         print(f"Произошла ошибка: {e}")
-        print("Бот будет перезапущен через systemd.")
+        print("Бот будет перезапущен.")
