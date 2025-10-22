@@ -48,6 +48,11 @@ source vpn_bot_env/bin/activate
 echo "Установка зависимостей (pyTelegramBotAPI)..."
 pip install pyTelegramBotAPI
 pip3 install python-telegram-bot
+# Activate your virtual environment if you're using one
+# source /path/to/your/venv/bin/activate
+
+# Install yookassa package
+pip3 install yookassa
 # Создание необходимых JSON файлов, если их нет
 echo "Проверка и создание файлов БД..."
 for db_file in users.json configs.json payments.json; do
