@@ -47,6 +47,7 @@ source vpn_bot_env/bin/activate
 # Установка зависимостей
 echo "Установка зависимостей (pyTelegramBotAPI)..."
 pip install pyTelegramBotAPI
+pip install yookassa
 pip3 install python-telegram-bot
 # Activate your virtual environment if you're using one
 # source /path/to/your/venv/bin/activate
