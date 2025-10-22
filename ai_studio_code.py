@@ -1,41 +1,42 @@
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Токен бота
 BOT_TOKEN = "8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Создаем экземпляр бота
+bot = telebot.TeleBot(BOT_TOKEN)
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
     """Обработчик команды /start"""
-    # Создаем кнопку "Поддержка"
-    keyboard = [
-        [InlineKeyboardButton("Поддержка", url="https://t.me/Gl1ch555")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Создаем клавиатуру с кнопкой
+    keyboard = InlineKeyboardMarkup()
+    support_button = InlineKeyboardButton("Поддержка", url="https://t.me/Gl1ch555")
+    keyboard.add(support_button)
     
     # Отправляем сообщение с кнопкой
-    await update.message.reply_text(
+    bot.send_message(
+        message.chat.id,
         "Бот находится на тех обслуживании. По вопросам обращайтесь в поддержку.",
-        reply_markup=reply_markup
+        reply_markup=keyboard
     )
 
-def main():
-    """Основная функция запуска бота"""
-    # Создаем приложение
-    application = Application.builder().token(BOT_TOKEN).build()
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    """Обработчик всех остальных сообщений"""
+    # Создаем клавиатуру с кнопкой
+    keyboard = InlineKeyboardMarkup()
+    support_button = InlineKeyboardButton("Поддержка", url="https://t.me/Gl1ch555")
+    keyboard.add(support_button)
     
-    # Добавляем обработчик команды /start
-    application.add_handler(CommandHandler("start", start))
-    
-    # Запускаем бота
-    print("Бот запущен...")
-    application.run_polling()
+    # Отправляем сообщение с кнопкой
+    bot.send_message(
+        message.chat.id,
+        "Бот находится на тех обслуживании. По вопросам обращайтесь в поддержку.",
+        reply_markup=keyboard
+    )
 
 if __name__ == "__main__":
-    main()
+    print("Бот запущен...")
+    bot.infinity_polling()
