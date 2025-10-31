@@ -8,6 +8,14 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+# Проверка доступности интернета и GitHub
+echo "Проверка доступности GitHub..."
+if ! curl -s --head https://github.com | head -n 1 | grep -q "200 OK"; then
+    echo "Ошибка: Нет доступа к GitHub. Проверьте интернет-соединение."
+    exit 1
+fi
+echo "GitHub доступен ✓"
+
 # Переходим во временную директорию для загрузки и установки
 INSTALL_DIR="/opt/backup_bot"
 mkdir -p "$INSTALL_DIR"
@@ -24,21 +32,47 @@ else
     echo "Бот не запущен, продолжаем установку..."
 fi
 
-echo "Копирование файлов бота..."
-# Копируем файлы из текущей директории
-cp "c:\Users\pavel\Documents\Новая папка (6)\server_backup_bot.py" ./bot.py
-cp "c:\Users\pavel\Documents\Новая папка (6)\requirements.txt" ./requirements.txt
+echo "Загрузка файлов бота с GitHub..."
+
+# Загружаем основной файл бота
+echo "Загрузка server_backup_bot.py..."
+wget -qO bot.py https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/server_backup_bot.py
 
 if [ $? -ne 0 ]; then
-    echo "Ошибка: Не удалось скопировать файлы бота."
+    echo "Ошибка: Не удалось загрузить server_backup_bot.py. Проверьте путь и доступность файла."
     exit 1
 fi
+
+# Загружаем файл зависимостей
+echo "Загрузка requirements.txt..."
+wget -qO requirements.txt https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/requirements.txt
+
+if [ $? -ne 0 ]; then
+    echo "Ошибка: Не удалось загрузить requirements.txt. Проверьте путь и доступность файла."
+    exit 1
+fi
+
+echo "Файлы успешно загружены с GitHub!"
+
+# Проверка размера загруженных файлов
+echo "Проверка загруженных файлов..."
+if [ ! -s "bot.py" ]; then
+    echo "Ошибка: Файл bot.py пуст или не загружен."
+    exit 1
+fi
+
+if [ ! -s "requirements.txt" ]; then
+    echo "Ошибка: Файл requirements.txt пуст или не загружен."
+    exit 1
+fi
+
+echo "Проверка файлов завершена ✓"
 
 echo "Обновление списка пакетов..."
 apt update -y
 
-echo "Установка python3-full (включает venv)..."
-apt install python3-full python3-pip -y
+echo "Установка необходимых пакетов..."
+apt install python3-full python3-pip wget curl -y
 
 # Создание и активация виртуального окружения
 echo "Создание виртуального окружения..."
