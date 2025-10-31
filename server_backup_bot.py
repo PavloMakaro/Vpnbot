@@ -32,16 +32,24 @@ BOT_TOKEN = "8468632199:AAFieDkPdx7gg4V4ILDKDhTfjkf778BPwZ0"
 # Создание экземпляра бота
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Конфигурация
+# Конфигурация по умолчанию
 CONFIG = {
     "admin_users": [],  # ID администраторов (будет заполнено автоматически)
     "backup_paths": [
         "/opt/vpn_bot",
+        "/opt/vpn_bot/bot.py",
+        "/opt/vpn_bot/users.json",
+        "/opt/vpn_bot/configs.json", 
+        "/opt/vpn_bot/payments.json",
+        "/opt/vpn_bot/vpn_bot_env",
         "/etc/systemd/system/vpn_tg_bot.service",
-        "/var/log",
+        "/etc/systemd/system/backup_tg_bot.service",
+        "/opt/backup_bot",
+        "/var/log/syslog",
+        "/var/log/auth.log",
         "/home"
     ],
-    "max_backup_size": 100 * 1024 * 1024,  # 100MB максимальный размер архива
+    "max_backup_size": 200 * 1024 * 1024,  # 200MB максимальный размер архива
     "backup_dir": "/tmp/server_backups"
 }
 
@@ -88,11 +96,42 @@ def get_system_info():
             "disk_usage": subprocess.getoutput("df -h"),
             "memory_usage": subprocess.getoutput("free -h"),
             "cpu_info": subprocess.getoutput("lscpu | head -10"),
-            "running_services": subprocess.getoutput("systemctl list-units --type=service --state=running | head -20")
+            "running_services": subprocess.getoutput("systemctl list-units --type=service --state=running | head -20"),
+            "vpn_bot_status": check_vpn_bot_status()
         }
         return info
     except Exception as e:
         logger.error(f"Ошибка получения информации о системе: {e}")
+        return {"error": str(e)}
+
+def check_vpn_bot_status():
+    """Проверка статуса VPN бота и его файлов"""
+    try:
+        status_info = {}
+        
+        # Проверка службы VPN бота
+        vpn_service_status = subprocess.getoutput("systemctl is-active vpn_tg_bot.service 2>/dev/null || echo 'inactive'")
+        status_info["vpn_service"] = vpn_service_status.strip()
+        
+        # Проверка файлов VPN бота
+        vpn_files = [
+            "/opt/vpn_bot/bot.py",
+            "/opt/vpn_bot/users.json", 
+            "/opt/vpn_bot/configs.json",
+            "/opt/vpn_bot/payments.json"
+        ]
+        
+        status_info["vpn_files"] = {}
+        for file_path in vpn_files:
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                status_info["vpn_files"][file_path] = f"✅ {file_size} bytes"
+            else:
+                status_info["vpn_files"][file_path] = "❌ Не найден"
+        
+        return status_info
+    except Exception as e:
+        logger.error(f"Ошибка проверки VPN бота: {e}")
         return {"error": str(e)}
 
 def create_backup(paths, backup_name=None):
@@ -201,6 +240,19 @@ def server_status(message):
 {info['cpu_info']}
 ```
 
+**VPN Бот:**
+Служба: `{info['vpn_bot_status'].get('vpn_service', 'неизвестно')}`
+
+**Файлы VPN бота:**
+"""
+        
+        # Добавляем информацию о файлах VPN бота
+        if 'vpn_files' in info['vpn_bot_status']:
+            for file_path, status in info['vpn_bot_status']['vpn_files'].items():
+                file_name = os.path.basename(file_path)
+                status_text += f"`{file_name}`: {status}\n"
+        
+        status_text += f"""
 **Запущенные сервисы:**
 ```
 {info['running_services']}
