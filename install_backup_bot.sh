@@ -10,11 +10,28 @@ fi
 
 # Проверка доступности интернета и GitHub
 echo "Проверка доступности GitHub..."
-if ! curl -s --head https://github.com | head -n 1 | grep -q "200 OK"; then
-    echo "Ошибка: Нет доступа к GitHub. Проверьте интернет-соединение."
-    exit 1
+
+# Пробуем несколько способов проверки подключения
+GITHUB_CHECK=false
+
+# Способ 1: ping
+if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+    echo "Интернет соединение доступно ✓"
+    
+    # Способ 2: простая загрузка с GitHub
+    if wget -q --spider https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/server_backup_bot.py; then
+        GITHUB_CHECK=true
+        echo "GitHub доступен ✓"
+    elif curl -s -f https://raw.githubusercontent.com/PavloMakaro/Vpnbot/main/server_backup_bot.py >/dev/null 2>&1; then
+        GITHUB_CHECK=true
+        echo "GitHub доступен ✓"
+    fi
 fi
-echo "GitHub доступен ✓"
+
+if [ "$GITHUB_CHECK" = false ]; then
+    echo "Предупреждение: Не удалось проверить доступность GitHub."
+    echo "Попробуем продолжить установку..."
+fi
 
 # Переходим во временную директорию для загрузки и установки
 INSTALL_DIR="/opt/backup_bot"
