@@ -14,7 +14,7 @@ import zipfile
 from yookassa import Configuration, Payment
 
 # === ТОКЕНЫ И КОНФИГУРАЦИЯ ===
-TOKEN = '8438146139:AAEtCiWB3Fw4x3ci7cTli6W-cCye13rN_gc'
+TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178  # ← Замените на ваш реальный ID!
 
