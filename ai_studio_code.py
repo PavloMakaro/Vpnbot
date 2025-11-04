@@ -169,6 +169,7 @@ def admin_keyboard():
         types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
         types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"),
         types.InlineKeyboardButton("Управление конфигами пользователей", callback_data="admin_manage_user_configs"),
+        types.InlineKeyboardButton("Статистика", callback_data="admin_stats"),
         types.InlineKeyboardButton("Бэкап данных", callback_data="admin_backup"),
         types.InlineKeyboardButton("Рассылка", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("Выйти из админки", callback_data="main_menu")
@@ -257,6 +258,66 @@ def build_users_list_page(page: int, per_page: int = 20):
     kb.add(types.InlineKeyboardButton("🏠 Админ-панель", callback_data="admin_manage_users"))
 
     return text, kb
+
+def build_admin_stats() -> str:
+    """Собирает ключевые метрики для админской статистики."""
+    try:
+        now = datetime.datetime.now()
+        total_users = len(users_db)
+        with_subscription = 0
+        active_users = 0
+        total_balance = 0
+
+        for uid, u in users_db.items():
+            total_balance += float(u.get('balance', 0) or 0)
+            sub_end = u.get('subscription_end')
+            if sub_end:
+                with_subscription += 1
+                try:
+                    end_dt = datetime.datetime.strptime(sub_end, '%Y-%m-%d %H:%M:%S')
+                    if end_dt > now:
+                        active_users += 1
+                except Exception:
+                    pass
+
+        total_payments = len(payments_db)
+        pending_payments = 0
+        confirmed_payments = 0
+        rejected_payments = 0
+        total_revenue = 0.0
+        for p in payments_db.values():
+            status = p.get('status')
+            amount = float(p.get('amount', 0) or 0)
+            if status == 'pending':
+                pending_payments += 1
+            elif status == 'confirmed':
+                confirmed_payments += 1
+                total_revenue += amount
+            elif status == 'rejected':
+                rejected_payments += 1
+
+        lines = []
+        lines.append("Статистика системы:")
+        lines.append(f"Пользователи: {total_users}")
+        lines.append(f"С подпиской: {with_subscription} • Активных: {active_users}")
+        lines.append(f"Суммарный баланс пользователей: {int(total_balance)} ₽")
+        lines.append("")
+        lines.append("Платежи ЮKassa:")
+        lines.append(f"Всего: {total_payments} • Подтверждено: {confirmed_payments} • Отклонено: {rejected_payments} • В ожидании: {pending_payments}")
+        lines.append(f"Подтвержденная выручка: {int(total_revenue)} ₽")
+        lines.append("")
+        lines.append("Конфиги по периодам:")
+        for period_key, period_info in SUBSCRIPTION_PERIODS.items():
+            period_days = period_info.get('days', period_key)
+            configs_list = configs_db.get(period_key, [])
+            total_cfg = len(configs_list)
+            available_cfg = sum(1 for c in configs_list if not c.get('used', False))
+            used_cfg = total_cfg - available_cfg
+            lines.append(f"{period_days} дней: всего {total_cfg}, доступно {available_cfg}, выдано {used_cfg}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Не удалось собрать статистику: {e}"
 
 # --- Создание бэкапа данных ---
 def create_backup_zip():
@@ -776,6 +837,13 @@ def callback_handler(call):
         if str(user_id) == str(ADMIN_ID):
             bot.edit_message_text("Управление конфигами:", chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   reply_markup=manage_configs_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+    elif call.data == "admin_stats":
+        if str(user_id) == str(ADMIN_ID):
+            stats_text = build_admin_stats()
+            bot.edit_message_text(stats_text, chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  reply_markup=admin_keyboard())
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
     elif call.data == "admin_show_configs":
