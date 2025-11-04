@@ -9,10 +9,12 @@ import subprocess
 import signal
 import sys
 import uuid
+import math
+import zipfile
 from yookassa import Configuration, Payment
 
 # === ТОКЕНЫ И КОНФИГУРАЦИЯ ===
-TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
+TOKEN = '8438146139:AAEtCiWB3Fw4x3ci7cTli6W-cCye13rN_gc'
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178  # ← Замените на ваш реальный ID!
 
@@ -167,6 +169,7 @@ def admin_keyboard():
         types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
         types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"),
         types.InlineKeyboardButton("Управление конфигами пользователей", callback_data="admin_manage_user_configs"),
+        types.InlineKeyboardButton("Бэкап данных", callback_data="admin_backup"),
         types.InlineKeyboardButton("Рассылка", callback_data="admin_broadcast"),
         types.InlineKeyboardButton("Выйти из админки", callback_data="main_menu")
     )
@@ -218,6 +221,68 @@ def users_management_keyboard():
         types.InlineKeyboardButton("Назад в админ-панель", callback_data="admin_panel")
     )
     return markup
+
+# --- Пагинация списка пользователей ---
+def build_users_list_page(page: int, per_page: int = 20):
+    """Формирует страницу списка всех пользователей с пагинацией."""
+    all_items = list(users_db.items())
+    total = len(all_items)
+    total_pages = max(1, math.ceil(total / per_page))
+    page = max(1, min(page, total_pages))
+
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = all_items[start:end]
+
+    lines = [f"**Всего пользователей: {total} • Страница {page}/{total_pages}**\n"]
+    for uid, user_data in items:
+        username = user_data.get('username', 'N/A')
+        balance = user_data.get('balance', 0)
+        days_left = get_subscription_days_left(uid)
+        sub_status = f"подписка: {days_left} дн." if days_left > 0 else "нет подписки"
+        lines.append(f"@{username} (ID: {uid}) — {balance} ₽, {sub_status}")
+
+    text = "\n".join(lines)
+
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    buttons = []
+    if page > 1:
+        buttons.append(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"admin_all_users_page_{page-1}"))
+    buttons.append(types.InlineKeyboardButton("🔄 Обновить", callback_data=f"admin_all_users_page_{page}"))
+    if page < total_pages:
+        buttons.append(types.InlineKeyboardButton("➡️ Далее", callback_data=f"admin_all_users_page_{page+1}"))
+
+    if buttons:
+        kb.add(*buttons)
+    kb.add(types.InlineKeyboardButton("🏠 Админ-панель", callback_data="admin_manage_users"))
+
+    return text, kb
+
+# --- Создание бэкапа данных ---
+def create_backup_zip():
+    """Создаёт zip-бэкап файлов данных и возвращает путь к архиву."""
+    try:
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        backups_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups')
+        if not os.path.exists(backups_dir):
+            os.makedirs(backups_dir)
+        backup_path = os.path.join(backups_dir, f'backup_{timestamp}.zip')
+
+        files_to_backup = []
+        for fname in ['users.json', 'configs.json', 'payments.json']:
+            fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
+            if os.path.exists(fpath):
+                files_to_backup.append(fpath)
+
+        # Если данных нет, всё равно создаём пустой архив для последовательности
+        with zipfile.ZipFile(backup_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for f in files_to_backup:
+                zf.write(f, arcname=os.path.basename(f))
+
+        return backup_path
+    except Exception as e:
+        print(f"Ошибка создания бэкапа: {e}")
+        return None
 
 def user_action_keyboard(target_user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -276,20 +341,8 @@ def my_account_keyboard():
     return markup
 
 def my_configs_keyboard(user_id):
+    """Упрощённая клавиатура для раздела 'Мои конфиги' — без выбора периода."""
     markup = types.InlineKeyboardMarkup(row_width=1)
-    user_info = users_db.get(str(user_id), {})
-    subscription_end = user_info.get('subscription_end')
-    has_active_subscription = False
-    if subscription_end:
-        end_date = datetime.datetime.strptime(subscription_end, '%Y-%m-%d %H:%M:%S')
-        if end_date > datetime.datetime.now():
-            has_active_subscription = True
-    if has_active_subscription:
-        markup.add(types.InlineKeyboardButton("Получить конфиг на 30 дней", callback_data="get_config_1_month"))
-        markup.add(types.InlineKeyboardButton("Получить конфиг на 60 дней", callback_data="get_config_2_months"))
-        markup.add(types.InlineKeyboardButton("Получить конфиг на 90 дней", callback_data="get_config_3_months"))
-    else:
-        markup.add(types.InlineKeyboardButton("Купить/Продлить подписку для получения конфига", callback_data="buy_vpn"))
     markup.add(types.InlineKeyboardButton("Назад", callback_data="my_account"))
     return markup
 
@@ -323,6 +376,52 @@ def send_config_to_user(user_id, period, username, first_name):
     except Exception as e:
         print(f"Error sending config to user {user_id}: {e}")
         return False, f"Ошибка отправки конфига: {e}"
+
+# --- Повторная выдача ранее полученного конфига ---
+def get_last_config_for_period(user_id, period):
+    """Возвращает последний выданный конфиг пользователя для указанного периода (если есть)."""
+    user_info = users_db.get(str(user_id), {})
+    used_configs = user_info.get('used_configs', [])
+    for conf in reversed(used_configs):
+        if conf.get('period') == period:
+            return conf
+    return None
+
+# === Инструкции по использованию VPN ===
+def build_usage_instructions(config_link: str, config_code: str = None) -> str:
+    """Возвращает текстовые инструкции по использованию VPN на популярных платформах.
+    config_link — ссылка или импорт-URL вашего конфига.
+    config_code — код/строка конфигурации (если приложение требует)."""
+    code_line = f"\n🔑 Код (если требуется): `{config_code}`" if config_code else ""
+    return (
+        "📘 **Инструкции по использованию VPN**\n\n"
+        "🔗 **Ваша ссылка на конфиг:**\n"
+        f"`{config_link}`{code_line}\n\n"
+        "🪟 **Windows (Clash Verge / v2rayN / OpenVPN)**\n"
+        "- Установите приложение, поддерживающее импорт ссылки или файла.\n"
+        "- Откройте приложение и выберите импорт по URL/Clipboard.\n"
+        "- Вставьте ссылку выше и примените профиль.\n"
+        "- Подключитесь к выбранному серверу.\n\n"
+        "📱 **Android (v2rayNG / OpenVPN)**\n"
+        "- Установите v2rayNG или OpenVPN из Google Play.\n"
+        "- Нажмите + и выберите импорт из буфера обмена/URL.\n"
+        "- Вставьте ссылку и сохраните профиль.\n"
+        "- Нажмите старт для подключения.\n\n"
+        "🍎 **iOS (Shadowrocket / Quantumult X)**\n"
+        "- Установите приложение из App Store (требуется платное).\n"
+        "- Добавьте конфигурацию по URL, вставьте ссылку.\n"
+        "- Разрешите создание VPN-профиля и подключитесь.\n\n"
+        "🍏 **macOS (ClashX / Tunnelblick)**\n"
+        "- Установите ClashX или Tunnelblick.\n"
+        "- Импортируйте конфигурацию через URL/файл.\n"
+        "- Активируйте профиль и подключитесь.\n\n"
+        "🐧 **Linux (OpenVPN / NetworkManager)**\n"
+        "- Установите `openvpn` или используйте NetworkManager.\n"
+        "- Импорт по файлу или URL (в зависимости от приложения).\n"
+        "- Запустите подключение и проверьте, что трафик идёт через VPN.\n\n"
+        "ℹ️ Если у вас возникли сложности — напишите в поддержку "
+        f"{ADMIN_USERNAME}."
+    )
 
 # === ОБРАБОТЧИКИ ===
 @bot.message_handler(commands=['start'])
@@ -550,6 +649,12 @@ def callback_handler(call):
                                       f"🔐 Конфиг уже выдан! Проверьте сообщения выше.",
                                   chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   parse_mode='Markdown', reply_markup=main_menu_keyboard(user_id))
+            # Дополнительно отправляем инструкции по использованию VPN
+            try:
+                instructions = build_usage_instructions(result.get('link'), result.get('code'))
+                bot.send_message(int(user_id), instructions, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Не удалось отправить инструкции пользователю {user_id}: {e}")
         else:
             bot.edit_message_text(f"✅ **Подписка куплена, но возникла ошибка при выдаче конфига:**\n\n"
                                   f"❌ {result}\n\n"
@@ -576,11 +681,25 @@ def callback_handler(call):
                               parse_mode='Markdown',
                               reply_markup=my_account_keyboard())
     elif call.data == "my_configs":
-        bot.edit_message_text("Выберите конфиг для получения (если у вас активна подписка):\n"
-                              "❕_Обратите внимание: каждый раз при нажатии кнопки 'Получить конфиг' "
-                              "выдается новый уникальный конфиг, если есть свободные._",
+        # Выводим список всех ранее выданных конфигов пользователю
+        uinfo = users_db.get(str(user_id), {})
+        used_configs = uinfo.get('used_configs', [])
+        if not used_configs:
+            text = "📦 У вас пока нет выданных конфигов.\n\n" \
+                   "После покупки подписки конфиг будет выдан автоматически."
+        else:
+            lines = ["🔐 Ваши выданные конфиги:\n"]
+            for idx, conf in enumerate(used_configs, start=1):
+                period_days = SUBSCRIPTION_PERIODS.get(conf.get('period'), {}).get('days', conf.get('period'))
+                lines.append(
+                    f"{idx}. {conf.get('config_name','Конфиг')}\n"
+                    f"   • Период: {period_days} дней\n"
+                    f"   • Дата выдачи: {conf.get('issue_date')}\n"
+                    f"   • Ссылка: {conf.get('config_link')}\n"
+                )
+            text = "\n".join(lines)
+        bot.edit_message_text(text,
                               chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              parse_mode='Markdown',
                               reply_markup=my_configs_keyboard(user_id))
     elif call.data.startswith("get_config_"):
         period_data_key = call.data.replace("get_config_", "")
@@ -589,19 +708,34 @@ def callback_handler(call):
         if days_left <= 0:
             bot.answer_callback_query(call.id, "❌ У вас нет активной подписки или подписка истекла.", show_alert=True)
             bot.edit_message_text("Выберите конфиг для получения (если у вас активна подписка):\n"
-                              "❕_Обратите внимание: каждый раз при нажатии кнопки 'Получить конфиг' "
-                              "выдается новый уникальный конфиг, если есть свободные._",
+                              "❕_В профиле будет прислан тот же конфиг, что и при покупке. Если ранее конфиг не выдавался — вы получите новый._",
                               chat_id=call.message.chat.id, message_id=call.message.message_id,
                               parse_mode='Markdown',
                               reply_markup=my_configs_keyboard(user_id))
             return
-        success, result = send_config_to_user(user_id, period_data_key,
-                                            user_info.get('username', 'user'),
-                                            user_info.get('first_name', 'User'))
-        if success:
-            bot.answer_callback_query(call.id, "✅ Конфиг успешно выдан! Проверьте сообщения.", show_alert=True)
+        # Сначала пробуем выдать ранее полученный конфиг для этого периода
+        existing = get_last_config_for_period(user_id, period_data_key)
+        if existing:
+            try:
+                bot.send_message(int(user_id),
+                                 f"🔐 **Ваш VPN конфиг**\n"
+                                 f"🗂️ **Описание:** {existing.get('config_name', 'Конфиг')}\n"
+                                 f"📅 **Период:** {SUBSCRIPTION_PERIODS[period_data_key]['days']} дней\n"
+                                 f"🔗 **Ссылка на конфиг:** {existing.get('config_link')}\n"
+                                 f"💾 _Сохраните этот конфиг для использования_",
+                                 parse_mode='Markdown')
+                bot.answer_callback_query(call.id, "✅ Ранее выданный конфиг отправлен!", show_alert=True)
+            except Exception as e:
+                bot.answer_callback_query(call.id, f"❌ Ошибка отправки: {e}", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, f"❌ {result}", show_alert=True)
+            # Если ранее конфиг не выдавался, выдаем новый
+            success, result = send_config_to_user(user_id, period_data_key,
+                                                 user_info.get('username', 'user'),
+                                                 user_info.get('first_name', 'User'))
+            if success:
+                bot.answer_callback_query(call.id, "✅ Конфиг успешно выдан! Проверьте сообщения.", show_alert=True)
+            else:
+                bot.answer_callback_query(call.id, f"❌ {result}", show_alert=True)
     elif call.data == "support":
         bot.edit_message_text(f"Для связи с поддержкой напишите {ADMIN_USERNAME}.\n"
                               f"Постараемся ответить как можно скорее.",
@@ -749,6 +883,12 @@ def callback_handler(call):
                                          f"Ваша подписка активна до: {new_end.strftime('%d.%m.%Y %H:%M')}\n"
                                          f"Конфиг уже выдан! Проверьте сообщения выше.",
                                          reply_markup=main_menu_keyboard(target_user_id))
+                        # Отправляем инструкции по использованию VPN после подтверждения админом
+                        try:
+                            instructions = build_usage_instructions(result.get('link'), result.get('code'))
+                            bot.send_message(int(target_user_id), instructions, parse_mode='Markdown')
+                        except Exception as e:
+                            print(f"Не удалось отправить инструкции пользователю {target_user_id}: {e}")
                     else:
                         bot.send_message(target_user_id,
                                          f"✅ Платеж подтвержден, но возникла ошибка при выдаче конфига: {result}\n"
@@ -820,18 +960,23 @@ def callback_handler(call):
     
     elif call.data == "admin_all_users":
         if str(user_id) == str(ADMIN_ID):
-            total_users = len(users_db)
-            message_text = f"**Всего пользователей: {total_users}**\n\n"
-            for uid, user_data in list(users_db.items())[:10]:  # Показываем первых 10
-                username = user_data.get('username', 'N/A')
-                balance = user_data.get('balance', 0)
-                message_text += f"@{username} (ID: {uid}) - {balance} ₽\n"
-            
-            if total_users > 10:
-                message_text += f"... и еще {total_users - 10} пользователей"
-            
-            bot.edit_message_text(message_text, chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                parse_mode='Markdown', reply_markup=users_management_keyboard())
+            # Переходим на первую страницу списка всех пользователей
+            page = 1
+            text, kb = build_users_list_page(page)
+            bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  parse_mode='Markdown', reply_markup=kb)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+
+    elif call.data.startswith("admin_all_users_page_"):
+        if str(user_id) == str(ADMIN_ID):
+            try:
+                page = int(call.data.replace("admin_all_users_page_", ""))
+            except ValueError:
+                page = 1
+            text, kb = build_users_list_page(page)
+            bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  parse_mode='Markdown', reply_markup=kb)
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
     
@@ -880,6 +1025,27 @@ def callback_handler(call):
             bot.edit_message_text("Введите сообщение для рассылки:",
                                 chat_id=call.message.chat.id, message_id=call.message.message_id)
             bot.register_next_step_handler(call.message, process_broadcast)
+        else:
+            bot.answer_callback_query(call.id, "У вас нет прав администратора.")
+    
+    elif call.data == "admin_backup":
+        if str(user_id) == str(ADMIN_ID):
+            backup_path = create_backup_zip()
+            if backup_path and os.path.exists(backup_path):
+                try:
+                    with open(backup_path, 'rb') as f:
+                        bot.send_document(ADMIN_ID, f, caption=f"✅ Бэкап создан: {os.path.basename(backup_path)}")
+                    bot.edit_message_text("✅ Бэкап данных успешно создан и отправлен.",
+                                          chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          reply_markup=admin_keyboard())
+                except Exception as e:
+                    bot.edit_message_text(f"❌ Ошибка отправки бэкапа: {e}\nФайл: {backup_path}",
+                                          chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          reply_markup=admin_keyboard())
+            else:
+                bot.edit_message_text("❌ Не удалось создать бэкап.",
+                                      chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      reply_markup=admin_keyboard())
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
     
