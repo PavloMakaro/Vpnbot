@@ -14,7 +14,7 @@ import zipfile
 from yookassa import Configuration, Payment
 
 # === ТОКЕНЫ И КОНФИГУРАЦИЯ ===
-TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
+TOKEN = '8438146139:AAEtCiWB3Fw4x3ci7cTli6W-cCye13rN_gc'
 ADMIN_USERNAME = '@Gl1ch555'
 ADMIN_ID = 8320218178  # ← Замените на ваш реальный ID!
 
@@ -234,7 +234,7 @@ def build_users_list_page(page: int, per_page: int = 20):
     end = start + per_page
     items = all_items[start:end]
 
-    lines = [f"**Всего пользователей: {total} • Страница {page}/{total_pages}**\n"]
+    lines = [f"Всего пользователей: {total} • Страница {page}/{total_pages}\n"]
     for uid, user_data in items:
         username = user_data.get('username', 'N/A')
         balance = user_data.get('balance', 0)
@@ -964,7 +964,7 @@ def callback_handler(call):
             page = 1
             text, kb = build_users_list_page(page)
             bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  parse_mode='Markdown', reply_markup=kb)
+                                  reply_markup=kb)
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
 
@@ -976,7 +976,7 @@ def callback_handler(call):
                 page = 1
             text, kb = build_users_list_page(page)
             bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  parse_mode='Markdown', reply_markup=kb)
+                                  reply_markup=kb)
         else:
             bot.answer_callback_query(call.id, "У вас нет прав администратора.")
     
