@@ -166,7 +166,6 @@ def admin_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("Управление конфигами", callback_data="admin_manage_configs"),
-        types.InlineKeyboardButton("Подтвердить платежи", callback_data="admin_confirm_payments"),
         types.InlineKeyboardButton("Управление пользователями", callback_data="admin_manage_users"),
         types.InlineKeyboardButton("Управление конфигами пользователей", callback_data="admin_manage_user_configs"),
         types.InlineKeyboardButton("Статистика", callback_data="admin_stats"),
