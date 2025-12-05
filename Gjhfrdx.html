@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquid Glass OS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            --blur-strength: 16px;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #0f0c29;
+            background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            overflow-x: hidden;
+            color: white;
+            position: relative;
+        }
+
+        /* Анимированный фон (Liquid Blobs) */
+        .blob {
+            position: absolute;
+            filter: blur(40px);
+            z-index: 0;
+            opacity: 0.8;
+            animation: move 10s infinite alternate;
+        }
+
+        .blob-1 {
+            top: 10%;
+            left: 10%;
+            width: 300px;
+            height: 300px;
+            background: #ff00cc;
+            background: linear-gradient(to right, #333399, #ff00cc);
+            border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+        }
+
+        .blob-2 {
+            bottom: 20%;
+            right: 10%;
+            width: 350px;
+            height: 350px;
+            background: #00d2ff;
+            background: linear-gradient(to right, #3a7bd5, #00d2ff);
+            border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+            animation-duration: 12s;
+            animation-delay: -2s;
+        }
+
+        .blob-3 {
+            top: 40%;
+            left: 40%;
+            width: 200px;
+            height: 200px;
+            background: #f12711;
+            background: linear-gradient(to right, #f5af19, #f12711);
+            border-radius: 40% 60% 60% 40% / 40% 60% 40% 60%;
+            animation-duration: 8s;
+            animation-delay: -4s;
+        }
+
+        @keyframes move {
+            from { transform: translate(0, 0) rotate(0deg); }
+            to { transform: translate(40px, -40px) rotate(20deg); }
+        }
+
+        /* Стеклянный эффект */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(var(--blur-strength));
+            -webkit-backdrop-filter: blur(var(--blur-strength));
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: 24px;
+            transition: all 0.3s ease;
+            z-index: 10;
+            position: relative;
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        /* Интерактивные элементы */
+        .glass-input {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            transition: 0.3s;
+        }
+        .glass-input:focus {
+            background: rgba(0, 0, 0, 0.4);
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .glass-btn {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0));
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.37);
+            transition: all 0.2s;
+        }
+        .glass-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Кастомный скроллбар */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2); 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4); 
+        }
+
+        /* Анимация списка задач */
+        .task-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        .task-exit {
+            animation: slideOut 0.3s ease-in forwards;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.9); }
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex justify-center items-start min-h-screen">
+
+    <!-- Фон: Плавающие фигуры -->
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <!-- Основной Контейнер -->
+    <div class="container max-w-6xl w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+
+        <!-- Header / Welcome -->
+        <div class="glass-panel col-span-1 md:col-span-2 lg:col-span-3 p-6 flex flex-col md:flex-row justify-between items-center animate-fade-in">
+            <div class="flex items-center space-x-4 mb-4 md:mb-0">
+                <div class="w-14 h-14 rounded-full bg-gradient-to-tr from-pink-500 to-violet-500 flex items-center justify-center text-xl font-bold border-2 border-white/30 shadow-lg">
+                    LG
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-wide">Liquid Glass OS</h1>
+                    <p class="text-white/60 text-sm">Добро пожаловать в будущее</p>
+                </div>
+            </div>
+            <div id="clock-display" class="text-right">
+                <div id="time" class="text-4xl font-light tracking-wider">00:00:00</div>
+                <div id="date" class="text-sm text-white/70 uppercase tracking-widest">Загрузка...</div>
+            </div>
+        </div>
+
+        <!-- Виджет: Задачи (Todo) -->
+        <div class="glass-panel col-span-1 lg:col-span-2 p-6 flex flex-col h-[400px]">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+                <i class="fa-solid fa-check-double mr-2 text-cyan-400"></i> Задачи
+            </h2>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="todo-input" placeholder="Новая задача..." class="glass-input w-full px-4 py-2 rounded-xl text-sm placeholder-white/40">
+                <button onclick="addTodo()" class="glass-btn px-4 py-2 rounded-xl text-white hover:bg-white/10">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+
+            <ul id="todo-list" class="flex-1 overflow-y-auto space-y-2 pr-2">
+                <!-- Задачи будут здесь -->
+            </ul>
+            
+            <div class="mt-2 text-xs text-white/30 text-center">
+                Смахните или нажмите корзину для удаления
+            </div>
+        </div>
+
+        <!-- Виджет: Калькулятор -->
+        <div class="glass-panel col-span-1 p-6 flex flex-col items-center justify-center">
+            <div class="w-full mb-4">
+                <input type="text" id="calc-display" readonly class="w-full bg-transparent text-right text-3xl font-light tracking-wide outline-none placeholder-white/20" placeholder="0">
+            </div>
+            <div class="grid grid-cols-4 gap-3 w-full">
+                <button onclick="calcClear()" class="glass-btn p-3 rounded-lg text-red-300 font-bold">C</button>
+                <button onclick="calcAppend('/')" class="glass-btn p-3 rounded-lg text-cyan-300">÷</button>
+                <button onclick="calcAppend('*')" class="glass-btn p-3 rounded-lg text-cyan-300">×</button>
+                <button onclick="calcDelete()" class="glass-btn p-3 rounded-lg text-orange-300"><i class="fa-solid fa-delete-left"></i></button>
+
+                <button onclick="calcAppend('7')" class="glass-btn p-3 rounded-lg hover:bg-white/10">7</button>
+                <button onclick="calcAppend('8')" class="glass-btn p-3 rounded-lg hover:bg-white/10">8</button>
+                <button onclick="calcAppend('9')" class="glass-btn p-3 rounded-lg hover:bg-white/10">9</button>
+                <button onclick="calcAppend('-')" class="glass-btn p-3 rounded-lg text-cyan-300">-</button>
+
+                <button onclick="calcAppend('4')" class="glass-btn p-3 rounded-lg hover:bg-white/10">4</button>
+                <button onclick="calcAppend('5')" class="glass-btn p-3 rounded-lg hover:bg-white/10">5</button>
+                <button onclick="calcAppend('6')" class="glass-btn p-3 rounded-lg hover:bg-white/10">6</button>
+                <button onclick="calcAppend('+')" class="glass-btn p-3 rounded-lg text-cyan-300">+</button>
+
+                <button onclick="calcAppend('1')" class="glass-btn p-3 rounded-lg hover:bg-white/10">1</button>
+                <button onclick="calcAppend('2')" class="glass-btn p-3 rounded-lg hover:bg-white/10">2</button>
+                <button onclick="calcAppend('3')" class="glass-btn p-3 rounded-lg hover:bg-white/10">3</button>
+                <button onclick="calcCalculate()" class="glass-btn p-3 rounded-lg row-span-2 bg-white/10 text-cyan-300 h-full flex items-center justify-center">=</button>
+
+                <button onclick="calcAppend('0')" class="glass-btn p-3 rounded-lg col-span-2 hover:bg-white/10">0</button>
+                <button onclick="calcAppend('.')" class="glass-btn p-3 rounded-lg hover:bg-white/10">.</button>
+            </div>
+        </div>
+
+        <!-- Виджет: Генератор паролей -->
+        <div class="glass-panel col-span-1 p-6">
+            <h2 class="text-lg font-semibold mb-3 flex items-center">
+                <i class="fa-solid fa-key mr-2 text-yellow-400"></i> Пароль
+            </h2>
+            <div class="bg-black/20 rounded-xl p-3 mb-3 flex justify-between items-center border border-white/10">
+                <span id="password-output" class="font-mono text-lg tracking-wider text-green-400 truncate mr-2">Click Generate</span>
+                <button onclick="copyPassword()" class="text-white/50 hover:text-white transition">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
+            </div>
+            <button onclick="generatePassword()" class="w-full glass-btn py-2 rounded-xl text-sm font-semibold hover:bg-white/20">
+                Сгенерировать безопасный ключ
+            </button>
+        </div>
+
+        <!-- Виджет: Настройки стекла (Interactive) -->
+        <div class="glass-panel col-span-1 md:col-span-2 lg:col-span-2 p-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+                <i class="fa-solid fa-sliders mr-2 text-pink-400"></i> Лаборатория Дизайна
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Blur Control -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-2 flex justify-between">
+                        <span>Сила размытия (Blur)</span>
+                        <span id="blur-val">16px</span>
+                    </label>
+                    <input type="range" min="0" max="40" value="16" oninput="updateGlass('blur', this.value)">
+                </div>
+                <!-- Opacity Control -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-2 flex justify-between">
+                        <span>Прозрачность фона</span>
+                        <span id="opacity-val">10%</span>
+                    </label>
+                    <input type="range" min="0" max="50" value="10" oninput="updateGlass('opacity', this.value)">
+                </div>
+            </div>
+            <p class="mt-4 text-xs text-white/40">Изменяйте ползунки, чтобы настроить эффект жидкого стекла под себя.</p>
+        </div>
+
+    </div>
+
+    <!-- Модальное окно (Toast) -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 glass-panel px-6 py-3 rounded-full opacity-0 pointer-events-none transition-opacity duration-300 flex items-center gap-2">
+        <i class="fa-solid fa-circle-info text-cyan-400"></i>
+        <span id="toast-msg">Сообщение</span>
+    </div>
+
+    <script>
+        /* === 1. ЧАСЫ И ДАТА === */
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ru-RU');
+            const dateString = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+            
+            document.getElementById('time').textContent = timeString;
+            document.getElementById('date').textContent = dateString;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        /* === 2. TODO LIST === */
+        const todoInput = document.getElementById('todo-input');
+        const todoList = document.getElementById('todo-list');
+
+        // Добавить по Enter
+        todoInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') addTodo();
+        });
+
+        function addTodo() {
+            const text = todoInput.value.trim();
+            if (!text) return;
+
+            const li = document.createElement('li');
+            li.className = 'glass-panel p-3 flex justify-between items-center task-enter bg-white/5 border-white/10 mb-2';
+            li.style.borderRadius = '12px';
+            li.style.marginBottom = '8px'; // Tailwind space-y doesn't work well with dynamic adds sometimes
+            
+            li.innerHTML = `
+                <span class="text-sm font-light cursor-pointer select-none" onclick="toggleTask(this)">${text}</span>
+                <button onclick="removeTask(this)" class="text-red-300 hover:text-red-500 transition px-2">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            `;
+            
+            // Вставляем сверху
+            todoList.insertBefore(li, todoList.firstChild);
+            todoInput.value = '';
+        }
+
+        function removeTask(btn) {
+            const li = btn.parentElement;
+            li.classList.remove('task-enter');
+            li.classList.add('task-exit');
+            setTimeout(() => li.remove(), 300);
+        }
+
+        function toggleTask(span) {
+            span.classList.toggle('line-through');
+            span.classList.toggle('text-white/30');
+        }
+
+        // Добавим пару демо задач
+        window.onload = () => {
+            const demos = ["Изучить Glassmorphism", "Купить молоко", "Обновить дизайн"];
+            demos.forEach(t => {
+                todoInput.value = t;
+                addTodo();
+            });
+        };
+
+        /* === 3. КАЛЬКУЛЯТОР === */
+        let calcBuffer = "";
+        const display = document.getElementById('calc-display');
+
+        function calcAppend(val) {
+            // Предотвращаем множественные точки
+            if(val === '.' && calcBuffer.includes('.') && !calcBuffer.match(/[\+\-\*\/]/)) return;
+            
+            calcBuffer += val;
+            display.value = calcBuffer;
+        }
+
+        function calcClear() {
+            calcBuffer = "";
+            display.value = "";
+        }
+
+        function calcDelete() {
+            calcBuffer = calcBuffer.slice(0, -1);
+            display.value = calcBuffer;
+        }
+
+        function calcCalculate() {
+            try {
+                // Безопасное вычисление (Function вместо eval для чуть большей безопасности, но всё еще просто)
+                if(!calcBuffer) return;
+                const result = new Function('return ' + calcBuffer)();
+                
+                // Округляем до разумных пределов
+                const formatted = Math.round(result * 1000000) / 1000000;
+                
+                display.value = formatted;
+                calcBuffer = String(formatted);
+            } catch (e) {
+                display.value = "Error";
+                setTimeout(calcClear, 1500);
+            }
+        }
+
+        /* === 4. ГЕНЕРАТОР ПАРОЛЕЙ === */
+        function generatePassword() {
+            const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+            let password = "";
+            for (let i = 0; i < 12; i++) {
+                password += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            document.getElementById('password-output').textContent = password;
+        }
+
+        function copyPassword() {
+            const text = document.getElementById('password-output').textContent;
+            if(text === "Click Generate") {
+                showToast("Сначала сгенерируйте пароль!");
+                return;
+            }
+            
+            // Используем старый API для совместимости с iframe, либо новый
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => showToast("Пароль скопирован!"));
+            } else {
+                // Fallback
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showToast("Пароль скопирован!");
+            }
+        }
+
+        /* === 5. ЛАБОРАТОРИЯ ДИЗАЙНА (CSS Variable Control) === */
+        const root = document.documentElement;
+
+        function updateGlass(type, value) {
+            if (type === 'blur') {
+                root.style.setProperty('--blur-strength', value + 'px');
+                document.getElementById('blur-val').textContent = value + 'px';
+            } else if (type === 'opacity') {
+                const alpha = value / 100;
+                root.style.setProperty('--glass-bg', `rgba(255, 255, 255, ${alpha})`);
+                document.getElementById('opacity-val').textContent = value + '%';
+            }
+        }
+
+        /* === UI UTILS === */
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            
+            toast.classList.remove('opacity-0');
+            toast.style.bottom = '80px'; // slight jump up
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                toast.style.bottom = '20px';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
