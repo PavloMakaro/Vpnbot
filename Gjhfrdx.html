@@ -3,564 +3,248 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aether AI | Liquid Glass Agent</title>
-    
-    <!-- Tailwind CSS -->
+    <title>Polinaois API Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Marked.js (Markdown) -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    
-    <!-- Highlight.js (Code highlighting) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
-
         body {
-            font-family: 'Outfit', sans-serif;
-            background-color: #0f172a;
-            color: #fff;
-            overflow: hidden; /* Prevent body scroll, handle inside app */
-        }
-
-        /* --- Liquid Background Animation --- */
-        .liquid-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            overflow: hidden;
-        }
-
-        .blob {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.6;
-            animation: float 20s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95);
-        }
-
-        .blob-1 {
-            width: 500px;
-            height: 500px;
-            background: #7c3aed; /* Violet */
-            top: -100px;
-            left: -100px;
-            animation-delay: 0s;
-        }
-
-        .blob-2 {
-            width: 600px;
-            height: 600px;
-            background: #2563eb; /* Blue */
-            bottom: -150px;
-            right: -150px;
-            animation-delay: -5s;
-        }
-
-        .blob-3 {
-            width: 400px;
-            height: 400px;
-            background: #ec4899; /* Pink */
-            top: 40%;
-            left: 40%;
-            transform: translate(-50%, -50%);
-            animation-name: float-center;
-            animation-duration: 25s;
-        }
-
-        @keyframes float {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(30px, 50px) scale(1.1); }
-        }
-
-        @keyframes float-center {
-            0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-            50% { transform: translate(-40%, -60%) scale(1.2) rotate(180deg); }
-            100% { transform: translate(-50%, -50%) scale(1) rotate(360deg); }
-        }
-
-        /* --- Glassmorphism Classes --- */
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .glass-input {
-            background: rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-            transition: all 0.3s ease;
-        }
-
-        .glass-input:focus {
-            background: rgba(0, 0, 0, 0.4);
-            border-color: rgba(255, 255, 255, 0.3);
-            outline: none;
-            box-shadow: 0 0 15px rgba(124, 58, 237, 0.3);
-        }
-
-        .glass-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.2s ease;
+            background-color: #0f0f0f; /* Очень темный фон как на скрине */
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
         
-        .glass-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
+        /* Скроллбар */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
-        .glass-btn:active {
-            transform: translateY(0);
-        }
-
-        /* --- Scrollbar --- */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.02);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* --- Message Bubbles --- */
-        .msg-user {
-            background: linear-gradient(135deg, rgba(124, 58, 237, 0.6), rgba(37, 99, 235, 0.6));
-            border-radius: 18px 18px 2px 18px;
-            backdrop-filter: blur(4px);
-        }
-
-        .msg-ai {
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 18px 18px 18px 2px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(4px);
-        }
-
-        /* --- Typing Indicator --- */
+        /* Анимация загрузки */
         .typing-dot {
-            width: 6px;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.7);
-            border-radius: 50%;
-            display: inline-block;
             animation: typing 1.4s infinite ease-in-out both;
+            height: 6px; width: 6px;
+            background-color: #aaa; border-radius: 50%; display: inline-block; margin: 0 1px;
         }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
-        /* --- Markdown Styles override --- */
-        .prose pre {
-            background: rgba(0, 0, 0, 0.4) !important;
-            border-radius: 8px;
-            padding: 1rem;
-        }
-        .prose code {
-            color: #e2e8f0;
-            background: rgba(255,255,255,0.1);
-            padding: 2px 4px;
-            border-radius: 4px;
-        }
-        .prose pre code {
-            background: transparent;
-            padding: 0;
-        }
-        .prose img {
+        /* Меню выбора моделей (имитация стиля со скрина) */
+        .model-menu {
+            background-color: #1a1a1a;
+            border: 1px solid #333;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            position: absolute;
+            bottom: 70px;
+            left: 20px;
+            width: 200px;
+            display: none; /* Скрыто по умолчанию */
+            z-index: 50;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .prose p {
-            margin-bottom: 0.5rem;
-        }
+        .model-option:hover { background-color: #2a2a2a; }
+        .model-active { color: #fff; font-weight: bold; }
+        .model-desc { font-size: 0.75rem; color: #888; }
     </style>
 </head>
-<body class="h-screen w-screen flex items-center justify-center">
+<body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Background Animation -->
-    <div class="liquid-bg">
-        <div class="blob blob-1"></div>
-        <div class="blob blob-2"></div>
-        <div class="blob blob-3"></div>
-    </div>
-
-    <!-- Main App Container -->
-    <div class="relative w-full h-full md:w-[90%] md:h-[90%] lg:w-[1200px] glass-panel md:rounded-3xl flex overflow-hidden shadow-2xl">
+    <header class="flex justify-between items-center p-4 border-b border-gray-800">
+        <button class="text-gray-400 hover:text-white"><i class="fas fa-bars text-xl"></i></button>
         
-        <!-- Sidebar (Settings) -->
-        <div id="sidebar" class="w-80 glass-panel border-r border-white/10 hidden md:flex flex-col transform transition-transform duration-300 absolute z-20 h-full md:relative bg-black/40 backdrop-blur-xl md:bg-transparent md:backdrop-blur-none">
-            <div class="p-6 border-b border-white/10 flex justify-between items-center">
-                <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-400">
-                    Aether AI
-                </h1>
-                <button onclick="toggleSidebar()" class="md:hidden text-white/70 hover:text-white">
-                    <i class="fas fa-times"></i>
-                </button>
+        <button id="modelTrigger" class="flex items-center space-x-2 bg-gray-800 px-4 py-2 rounded-full hover:bg-gray-700 transition">
+            <i class="fas fa-rocket text-gray-400"></i>
+            <span id="currentModelName" class="text-sm font-medium">Auto (GPT-4o)</span>
+            <i class="fas fa-chevron-down text-xs text-gray-500"></i>
+        </button>
+
+        <button class="text-gray-400 hover:text-white"><i class="fas fa-pen-to-square text-xl"></i></button>
+    </header>
+
+    <div id="modelMenu" class="model-menu p-2 flex flex-col gap-1">
+        <div class="p-2 border-b border-gray-700 text-xs text-gray-500 uppercase font-bold">Выберите модель</div>
+        
+        <div class="model-option p-3 rounded cursor-pointer flex flex-col" onclick="selectModel('openai', 'Auto (GPT-4o)')">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-rocket text-blue-400"></i> <span>Auto</span>
             </div>
-
-            <div class="flex-1 p-6 space-y-6 overflow-y-auto">
-                <div>
-                    <label class="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Системная Роль</label>
-                    <textarea id="systemPrompt" class="glass-input w-full rounded-xl p-3 text-sm h-32 resize-none" placeholder="Вы - полезный ИИ ассистент...">Ты — Aether, продвинутый ИИ-ассистент с «жидким» интерфейсом. Твой тон дружелюбный, лаконичный и слегка футуристичный. Ты отвечаешь на русском языке. Используй Markdown для форматирования.</textarea>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Голос (TTS)</label>
-                    <div class="flex items-center gap-3 mb-2">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="ttsToggle" class="sr-only peer">
-                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                        </label>
-                        <span class="text-sm text-white/80">Озвучивать ответы</span>
-                    </div>
-                </div>
-
-                 <div>
-                    <label class="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">О Модели</label>
-                    <p class="text-xs text-white/60 leading-relaxed">
-                        Используется API Pollinations.ai (OpenAI/Qwen). Не требует ключей. Поддерживает генерацию картинок по запросу (например, "Нарисуй киберпанк город").
-                    </p>
-                </div>
-            </div>
-
-            <div class="p-4 border-t border-white/10">
-                <button onclick="clearChat()" class="glass-btn w-full py-2 px-4 rounded-xl text-sm text-red-300 hover:bg-red-500/20 hover:text-red-200 flex items-center justify-center gap-2">
-                    <i class="fas fa-trash-alt"></i> Очистить историю
-                </button>
-            </div>
+            <span class="model-desc pl-6">Умная (OpenAI)</span>
         </div>
 
-        <!-- Main Chat Area -->
-        <div class="flex-1 flex flex-col relative">
+        <div class="model-option p-3 rounded cursor-pointer flex flex-col" onclick="selectModel('llama', 'Fast (Llama)')">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-bolt text-yellow-400"></i> <span>Fast</span>
+            </div>
+            <span class="model-desc pl-6">Быстрая (Llama 3)</span>
+        </div>
+
+        <div class="model-option p-3 rounded cursor-pointer flex flex-col" onclick="selectModel('mistral', 'Expert (Mistral)')">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-lightbulb text-purple-400"></i> <span>Expert</span>
+            </div>
+            <span class="model-desc pl-6">Точная (Mistral)</span>
+        </div>
+    </div>
+
+    <main id="chatContainer" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 pb-24">
+        
+        <div id="welcomeScreen" class="flex flex-col items-center justify-center h-full text-center opacity-70">
+            <div class="w-16 h-16 rounded-full border-4 border-gray-700 flex items-center justify-center mb-4">
+                <i class="fas fa-infinity text-2xl text-gray-500"></i>
+            </div>
+            <h2 class="text-xl font-semibold">Polinaois API</h2>
+            <p class="text-gray-500 text-sm mt-2">Задайте любой вопрос</p>
+        </div>
+
+    </main>
+
+    <div class="fixed bottom-0 w-full bg-[#0f0f0f] p-4 pb-6">
+        <div class="max-w-3xl mx-auto relative">
+            <div class="bg-[#1e1e1e] rounded-3xl flex items-center px-2 py-2 border border-gray-700 focus-within:border-gray-500 transition">
+                
+                <button class="p-3 text-gray-400 hover:text-white rounded-full">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+
+                <input type="text" id="userInput" 
+                       class="flex-1 bg-transparent text-white placeholder-gray-500 outline-none px-2"
+                       placeholder="Задайте любой вопрос..." autocomplete="off">
+
+                <button id="sendBtn" class="p-3 bg-white text-black rounded-full hover:bg-gray-200 transition ml-2 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-arrow-up"></i>
+                </button>
+            </div>
             
-            <!-- Header -->
-            <div class="h-16 border-b border-white/10 flex items-center justify-between px-6 glass-panel z-10">
-                <div class="flex items-center gap-4">
-                    <button onclick="toggleSidebar()" class="md:hidden text-white/70 hover:text-white glass-btn p-2 rounded-lg">
-                        <i class="fas fa-bars"></i>
-                    </button>
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]"></div>
-                        <span class="font-medium text-white/90">Aether Agent</span>
-                    </div>
-                </div>
-                <div class="flex gap-2">
-                     <a href="https://github.com/pollinations/pollinations" target="_blank" class="text-white/40 hover:text-white transition-colors text-sm">
-                        <i class="fab fa-github text-lg"></i>
-                    </a>
-                </div>
+            <div class="flex justify-center mt-2 gap-4">
+                <button class="flex items-center gap-2 bg-[#1e1e1e] border border-gray-700 px-3 py-1 rounded-full text-xs text-gray-400 hover:text-white">
+                    <i class="fas fa-image"></i> Imagine
+                </button>
+                <button class="flex items-center gap-2 bg-[#1e1e1e] border border-gray-700 px-3 py-1 rounded-full text-xs text-gray-400 hover:text-white">
+                    <i class="fas fa-search"></i> Поиск
+                </button>
             </div>
-
-            <!-- Messages Container -->
-            <div id="chatContainer" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
-                <!-- Welcome Message -->
-                <div class="flex gap-4">
-                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 shadow-lg">
-                        <i class="fas fa-robot text-xs"></i>
-                    </div>
-                    <div class="msg-ai px-6 py-4 max-w-[85%] text-sm md:text-base leading-relaxed">
-                        <p>Привет! Я <strong>Aether</strong>. Я могу отвечать на вопросы, писать код и даже генерировать изображения (просто попроси "Нарисуй...").</p>
-                        <p class="mt-2 text-white/50 text-xs">Работаю на бесплатном API без регистрации.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="p-4 md:p-6 glass-panel border-t border-white/10">
-                <div class="relative flex items-end gap-2 max-w-4xl mx-auto">
-                    
-                    <button id="micBtn" onclick="toggleSpeech()" class="glass-btn w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-white/70 hover:text-purple-400">
-                        <i class="fas fa-microphone"></i>
-                    </button>
-
-                    <div class="relative flex-1">
-                        <textarea id="userInput" rows="1" class="glass-input w-full rounded-2xl py-3 pl-4 pr-12 text-sm md:text-base resize-none overflow-hidden" 
-                            placeholder="Спроси о чем угодно или попроси нарисовать..."
-                            oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
-                            onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }"></textarea>
-                        <div class="absolute right-2 bottom-2 text-xs text-white/30 hidden md:block">Enter для отправки</div>
-                    </div>
-
-                    <button onclick="sendMessage()" class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg transition-transform active:scale-95">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                </div>
-                <div id="listeningIndicator" class="text-center text-xs text-purple-300 mt-2 hidden opacity-0 transition-opacity">
-                    <i class="fas fa-circle-notch fa-spin mr-1"></i> Слушаю...
-                </div>
-            </div>
-
         </div>
     </div>
 
     <script>
-        // --- Configuration ---
-        const messages = [];
-        let isProcessing = false;
-        
-        // --- DOM Elements ---
+        // Конфигурация
+        let currentModel = 'openai'; // По умолчанию GPT-4o через Pollinations
         const chatContainer = document.getElementById('chatContainer');
         const userInput = document.getElementById('userInput');
-        const systemPromptEl = document.getElementById('systemPrompt');
-        const ttsToggle = document.getElementById('ttsToggle');
-        const listeningIndicator = document.getElementById('listeningIndicator');
-        const micBtn = document.getElementById('micBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const modelMenu = document.getElementById('modelMenu');
+        const modelTrigger = document.getElementById('modelTrigger');
+        const currentModelName = document.getElementById('currentModelName');
 
-        // --- Speech Recognition Setup ---
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition;
-        
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'ru-RU';
-            recognition.continuous = false;
-            recognition.interimResults = false;
+        // Открытие меню моделей
+        modelTrigger.addEventListener('click', () => {
+            modelMenu.style.display = modelMenu.style.display === 'block' ? 'none' : 'block';
+        });
 
-            recognition.onstart = () => {
-                listeningIndicator.classList.remove('hidden');
-                setTimeout(() => listeningIndicator.classList.remove('opacity-0'), 10);
-                micBtn.classList.add('text-red-400', 'bg-red-500/10');
-            };
-
-            recognition.onend = () => {
-                listeningIndicator.classList.add('opacity-0');
-                setTimeout(() => listeningIndicator.classList.add('hidden'), 300);
-                micBtn.classList.remove('text-red-400', 'bg-red-500/10');
-            };
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                userInput.value = transcript;
-                sendMessage();
-            };
+        // Выбор модели
+        function selectModel(modelKey, displayName) {
+            currentModel = modelKey;
+            currentModelName.textContent = displayName;
+            modelMenu.style.display = 'none';
         }
 
-        function toggleSpeech() {
-            if (!recognition) {
-                alert("Ваш браузер не поддерживает распознавание речи.");
-                return;
+        // Закрыть меню при клике вне его
+        document.addEventListener('click', (e) => {
+            if (!modelTrigger.contains(e.target) && !modelMenu.contains(e.target)) {
+                modelMenu.style.display = 'none';
             }
+        });
+
+        // Отправка сообщения
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // Убираем приветствие
+            if (welcomeScreen) welcomeScreen.style.display = 'none';
+
+            // Добавляем сообщение пользователя
+            appendMessage(text, 'user');
+            userInput.value = '';
+
+            // Показываем индикатор загрузки
+            const loadingId = appendLoading();
+
             try {
-                recognition.start();
-            } catch (e) {
-                recognition.stop();
+                // Обращаемся к Pollinations.ai (Бесплатный публичный API)
+                // URL: https://text.pollinations.ai/{prompt}?model={model}
+                const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(text)}?model=${currentModel}`);
+                
+                if (!response.ok) throw new Error('Ошибка сети');
+                
+                const data = await response.text();
+                
+                // Удаляем загрузку и пишем ответ
+                removeMessage(loadingId);
+                appendMessage(data, 'bot');
+
+            } catch (error) {
+                removeMessage(loadingId);
+                appendMessage("Ошибка: не удалось связаться с сервером Polinaois.", 'bot');
             }
         }
 
-        // --- Core Logic ---
-
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('hidden');
-            sidebar.classList.toggle('absolute');
-        }
-
-        function clearChat() {
-            chatContainer.innerHTML = '';
-            messages.length = 0;
-            // Add welcome back
-            addMessage('AI', 'История очищена. О чем поговорим?', false);
-        }
-
-        function addMessage(role, text, isImage = false) {
-            const div = document.createElement('div');
-            div.className = `flex gap-4 ${role === 'User' ? 'flex-row-reverse' : ''}`;
+        // Вспомогательные функции рендера
+        function appendMessage(text, sender) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex w-full ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
             
-            const avatar = document.createElement('div');
-            avatar.className = `w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg ${
-                role === 'User' 
-                ? 'bg-white/10 border border-white/20' 
-                : 'bg-gradient-to-br from-purple-500 to-blue-500'
-            }`;
-            avatar.innerHTML = role === 'User' ? '<i class="fas fa-user text-xs"></i>' : '<i class="fas fa-robot text-xs"></i>';
-
             const bubble = document.createElement('div');
-            bubble.className = `${role === 'User' ? 'msg-user text-white' : 'msg-ai text-gray-100'} px-6 py-4 max-w-[85%] text-sm md:text-base leading-relaxed prose prose-invert`;
-
-            if (isImage) {
-                bubble.innerHTML = `<img src="${text}" alt="Generated Image" class="rounded-lg shadow-lg w-full h-auto loading-lazy" onload="scrollToBottom()">`;
+            // Стили сообщений: User - темный, Bot - прозрачный
+            bubble.className = sender === 'user' 
+                ? 'bg-[#2f2f2f] text-white px-4 py-2 rounded-2xl max-w-[80%] rounded-tr-sm'
+                : 'text-gray-100 max-w-[90%] leading-relaxed';
+            
+            // Если бот - рендерим Markdown (простая эмуляция)
+            if (sender === 'bot') {
+                bubble.innerHTML = parseSimpleMarkdown(text);
             } else {
-                // Parse markdown logic
-                if (role === 'AI') {
-                   bubble.innerHTML = marked.parse(text);
-                   // Highlight code blocks
-                   bubble.querySelectorAll('pre code').forEach((block) => {
-                       hljs.highlightElement(block);
-                   });
-                } else {
-                    bubble.textContent = text;
-                }
+                bubble.textContent = text;
             }
 
-            div.appendChild(avatar);
-            div.appendChild(bubble);
-            chatContainer.appendChild(div);
-            
-            scrollToBottom();
-            return div; // Return ref to element
+            msgDiv.appendChild(bubble);
+            chatContainer.appendChild(msgDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        function showTyping() {
-            const div = document.createElement('div');
-            div.id = 'typingIndicator';
-            div.className = 'flex gap-4';
-            div.innerHTML = `
-                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 shadow-lg">
-                    <i class="fas fa-robot text-xs"></i>
-                </div>
-                <div class="msg-ai px-6 py-4 flex items-center gap-1">
+        function appendLoading() {
+            const id = 'loading-' + Date.now();
+            const msgDiv = document.createElement('div');
+            msgDiv.id = id;
+            msgDiv.className = 'flex w-full justify-start';
+            msgDiv.innerHTML = `
+                <div class="text-gray-400 px-4 py-2">
                     <div class="typing-dot"></div>
                     <div class="typing-dot"></div>
                     <div class="typing-dot"></div>
                 </div>
             `;
-            chatContainer.appendChild(div);
-            scrollToBottom();
-        }
-
-        function removeTyping() {
-            const indicator = document.getElementById('typingIndicator');
-            if (indicator) indicator.remove();
-        }
-
-        function scrollToBottom() {
+            chatContainer.appendChild(msgDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+            return id;
         }
 
-        function speak(text) {
-            if (!ttsToggle.checked) return;
-            window.speechSynthesis.cancel();
-            
-            // Clean markdown chars for speech
-            const cleanText = text.replace(/[*#`_\[\]]/g, '');
-            
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            utterance.lang = 'ru-RU';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            
-            // Try to find a good Russian voice
-            const voices = window.speechSynthesis.getVoices();
-            const ruVoice = voices.find(v => v.lang.includes('ru'));
-            if (ruVoice) utterance.voice = ruVoice;
-
-            window.speechSynthesis.speak(utterance);
+        function removeMessage(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
         }
 
-        async function sendMessage() {
-            const text = userInput.value.trim();
-            if (!text || isProcessing) return;
-
-            userInput.value = '';
-            userInput.style.height = 'auto'; // Reset height
-            isProcessing = true;
-
-            // Add user message
-            addMessage('User', text);
-            
-            // Check for image generation request keywords
-            const imageKeywords = ['нарисуй', 'изобрази', 'draw', 'image', 'picture', 'photo', 'картинка', 'сгенерируй'];
-            const isImageRequest = imageKeywords.some(keyword => text.toLowerCase().startsWith(keyword));
-
-            showTyping();
-
-            try {
-                if (isImageRequest) {
-                    // --- Image Generation Mode ---
-                    // Using Pollinations Image API
-                    const prompt = text.replace(/(нарисуй|изобрази|сгенерируй|draw|create image of)\s*/i, "");
-                    const seed = Math.floor(Math.random() * 10000);
-                    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}&nologo=true`;
-                    
-                    // Preload to check if it works/wait a bit
-                    const img = new Image();
-                    img.onload = () => {
-                        removeTyping();
-                        addMessage('AI', imageUrl, true);
-                        isProcessing = false;
-                        speak("Вот ваше изображение.");
-                    };
-                    img.onerror = () => {
-                        removeTyping();
-                        addMessage('AI', "Не удалось сгенерировать изображение. Попробуйте еще раз.");
-                        isProcessing = false;
-                    };
-                    img.src = imageUrl;
-
-                } else {
-                    // --- Text Chat Mode ---
-                    
-                    // Construct conversation history for context
-                    const systemMsg = { role: 'system', content: systemPromptEl.value };
-                    const userMsg = { role: 'user', content: text };
-                    
-                    // Keep last 10 messages context to prevent overflow issues with GET request limits if we were using GET
-                    // Pollinations POST is better for history.
-                    
-                    const history = messages.slice(-6).map(m => ({
-                        role: m.role === 'User' ? 'user' : 'assistant',
-                        content: m.content
-                    }));
-                    history.push(userMsg);
-
-                    // We will use the POST endpoint for Pollinations text
-                    const response = await fetch('https://text.pollinations.ai/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            messages: [systemMsg, ...history],
-                            model: 'openai', // Defaulting to generic openai-compatible model
-                            seed: Math.floor(Math.random() * 1000)
-                        })
-                    });
-
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    
-                    const aiText = await response.text();
-
-                    removeTyping();
-                    addMessage('AI', aiText);
-                    
-                    // Update history
-                    messages.push({ role: 'User', content: text });
-                    messages.push({ role: 'AI', content: aiText });
-                    
-                    speak(aiText);
-                    isProcessing = false;
-                }
-            } catch (error) {
-                console.error(error);
-                removeTyping();
-                addMessage('AI', `Ошибка соединения: ${error.message}`);
-                isProcessing = false;
-            }
+        // Простой парсер для жирного текста и переносов строк
+        function parseSimpleMarkdown(text) {
+            let html = text
+                .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') // Жирный
+                .replace(/\n/g, '<br>'); // Переносы
+            return html;
         }
-        
-        // Initial setup for voices loading
-        window.speechSynthesis.onvoiceschanged = () => {};
-
     </script>
 </body>
 </html>
