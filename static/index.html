@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VPN Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- HOME TAB -->
+        <div id="home-tab" class="tab-content">
+            <header style="margin-bottom: 24px;">
+                <h1 id="username-display">User</h1>
+                <div class="text-secondary">Welcome back</div>
+            </header>
+
+            <div class="card">
+                <div class="text-secondary" style="font-size: 14px; margin-bottom: 4px;">Balance</div>
+                <div style="font-size: 32px; font-weight: 700; margin-bottom: 16px;" id="balance-display">0 ₽</div>
+                <button class="btn btn-secondary" onclick="switchTab('topup')">Top Up</button>
+            </div>
+
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h3>Subscription</h3>
+                    <div id="sub-status" class="status-pill status-inactive">Inactive</div>
+                </div>
+                <div id="sub-date" class="text-secondary" style="font-size: 14px; margin-bottom: 16px;">No active subscription</div>
+                <button class="btn" onclick="switchTab('shop')">Extend Subscription</button>
+            </div>
+
+            <div class="card" onclick="switchTab('profile')">
+                 <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3>My Configs</h3>
+                    <span style="color: var(--accent-color);">View ></span>
+                 </div>
+            </div>
+        </div>
+
+        <!-- SHOP TAB -->
+        <div id="shop-tab" class="tab-content hidden">
+            <header>
+                <h1>Select Plan</h1>
+            </header>
+            <div id="plans-container">
+                <!-- Plans injected here -->
+            </div>
+            <div style="margin-top: 20px;">
+                <button id="buy-btn" class="btn" onclick="buySubscription()" disabled>Select a plan</button>
+            </div>
+        </div>
+
+        <!-- TOPUP TAB -->
+        <div id="topup-tab" class="tab-content hidden">
+            <header>
+                <h1>Top Up Balance</h1>
+            </header>
+            <div class="card">
+                <label style="display:block; margin-bottom:8px; font-weight:500;">Amount (₽)</label>
+                <div class="chips">
+                    <div class="chip" data-amount="100">100 ₽</div>
+                    <div class="chip" data-amount="300">300 ₽</div>
+                    <div class="chip" data-amount="500">500 ₽</div>
+                    <div class="chip" data-amount="1000">1000 ₽</div>
+                </div>
+                <input type="number" id="amount-input" class="input-field" placeholder="Enter amount" min="50">
+                <div class="text-secondary" style="font-size: 12px; margin-bottom: 16px;">Minimum amount: 50 ₽</div>
+                <button class="btn" onclick="initiateTopup()">Pay with YooKassa</button>
+            </div>
+        </div>
+
+        <!-- PROFILE TAB -->
+        <div id="profile-tab" class="tab-content hidden">
+            <header>
+                <h1>My Configs</h1>
+            </header>
+            <div class="card">
+                <div id="configs-list">
+                    <!-- Configs injected here -->
+                </div>
+            </div>
+             <div class="card" style="margin-top: 20px;">
+                <h3>Support</h3>
+                <p class="text-secondary" style="font-size: 14px; margin-bottom: 12px;">Need help? Contact our support team.</p>
+                <a href="https://t.me/Gl1ch555" class="btn btn-secondary">Contact Support</a>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('home')">
+            <span class="nav-icon">🏠</span>
+            Home
+        </div>
+        <div class="nav-item" onclick="switchTab('shop')">
+            <span class="nav-icon">🛍️</span>
+            Shop
+        </div>
+        <div class="nav-item" onclick="switchTab('topup')">
+            <span class="nav-icon">💳</span>
+            Topup
+        </div>
+        <div class="nav-item" onclick="switchTab('profile')">
+            <span class="nav-icon">👤</span>
+            Profile
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
