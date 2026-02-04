@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot Mini App</title>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans h-screen flex flex-col overflow-hidden">
+    <!-- App Container -->
+    <div id="app" class="flex-1 overflow-y-auto p-4 pb-20 scrollbar-hide">
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="view">
+            <div class="bg-gray-800 rounded-2xl p-6 mb-6 shadow-lg border border-gray-700">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="text-gray-400 text-sm">Balance</div>
+                    <div class="bg-blue-600/20 text-blue-400 text-xs px-2 py-1 rounded-full" id="status-badge">Loading...</div>
+                </div>
+                <div class="text-4xl font-bold mb-1 flex items-baseline gap-1">
+                    <span id="user-balance">0</span>
+                    <span class="text-xl text-gray-400">₽</span>
+                </div>
+                <div class="text-sm text-gray-500" id="sub-info">Checking subscription...</div>
+
+                <button onclick="navTo('topup')" class="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-900/30">
+                    <i class="fas fa-wallet mr-2"></i> Top Up Balance
+                </button>
+            </div>
+
+            <h3 class="text-lg font-semibold mb-3 ml-1">Menu</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="navTo('shop')" class="bg-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-gray-750 border border-gray-700 transition active:scale-95">
+                    <div class="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center text-purple-400 text-xl">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <span class="font-medium text-sm">Buy VPN</span>
+                </button>
+                <button onclick="navTo('configs')" class="bg-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-gray-750 border border-gray-700 transition active:scale-95">
+                    <div class="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center text-green-400 text-xl">
+                        <i class="fas fa-key"></i>
+                    </div>
+                    <span class="font-medium text-sm">My Configs</span>
+                </button>
+                <button onclick="navTo('referral')" class="bg-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-gray-750 border border-gray-700 transition active:scale-95">
+                    <div class="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center text-yellow-400 text-xl">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <span class="font-medium text-sm">Referrals</span>
+                </button>
+                <button onclick="navTo('support')" class="bg-gray-800 p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-gray-750 border border-gray-700 transition active:scale-95">
+                    <div class="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 text-xl">
+                        <i class="fas fa-headset"></i>
+                    </div>
+                    <span class="font-medium text-sm">Support</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Shop View -->
+        <div id="view-shop" class="view hidden">
+            <div class="flex items-center gap-3 mb-4">
+                <button onclick="navTo('dashboard')" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold">Choose Plan</h2>
+            </div>
+            <div id="plans-container" class="space-y-3">
+                <!-- Plans injected by JS -->
+                <div class="text-center text-gray-500 py-10">Loading plans...</div>
+            </div>
+        </div>
+
+        <!-- Configs View -->
+        <div id="view-configs" class="view hidden">
+            <div class="flex items-center gap-3 mb-4">
+                <button onclick="navTo('dashboard')" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold">My Configurations</h2>
+            </div>
+            <div id="configs-container" class="space-y-3">
+                <!-- Configs injected by JS -->
+            </div>
+        </div>
+
+        <!-- TopUp View -->
+        <div id="view-topup" class="view hidden">
+            <div class="flex items-center gap-3 mb-4">
+                <button onclick="navTo('dashboard')" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold">Top Up Balance</h2>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 mb-4">
+                <button onclick="selectAmount(100)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">100₽</button>
+                <button onclick="selectAmount(200)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">200₽</button>
+                <button onclick="selectAmount(500)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">500₽</button>
+                <button onclick="selectAmount(1000)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">1000₽</button>
+                <button onclick="selectAmount(2000)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">2000₽</button>
+                <button onclick="selectAmount(5000)" class="amount-btn bg-gray-800 p-3 rounded-xl text-center hover:bg-gray-700 border border-gray-700 transition">5000₽</button>
+            </div>
+
+            <div class="mb-6">
+                <label class="text-sm text-gray-400 mb-2 block">Or enter custom amount</label>
+                <div class="relative">
+                    <input type="number" id="custom-amount" class="w-full bg-gray-800 rounded-xl p-4 pl-4 pr-12 text-white outline-none focus:ring-2 focus:ring-blue-600 border border-gray-700" placeholder="100-50000">
+                    <span class="absolute right-4 top-4 text-gray-500">₽</span>
+                </div>
+            </div>
+
+            <button onclick="initiateTopUp()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2">
+                <i class="fas fa-check-circle"></i> Pay Now
+            </button>
+        </div>
+
+        <!-- Referral View -->
+        <div id="view-referral" class="view hidden">
+             <div class="flex items-center gap-3 mb-4">
+                <button onclick="navTo('dashboard')" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold">Invite Friends</h2>
+            </div>
+             <div class="bg-gray-800 rounded-2xl p-6 shadow-lg text-center border border-gray-700">
+                <div class="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center text-yellow-400 mx-auto mb-4 text-3xl">
+                    <i class="fas fa-gift"></i>
+                </div>
+                <h3 class="text-lg font-bold mb-2">Earn Bonuses</h3>
+                <p class="text-gray-400 text-sm mb-6">Invite friends and get <span class="text-white font-bold">50₽</span> for each friend + <span class="text-white font-bold">7 days</span> of subscription!</p>
+
+                <div class="bg-gray-900 rounded-xl p-3 mb-4 border border-gray-700">
+                    <code id="ref-link" class="text-blue-400 text-xs break-all">https://t.me/vpnbot?start=12345</code>
+                </div>
+                <button onclick="copyRefLink()" id="copy-btn" class="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-xl text-sm transition font-medium">
+                    Copy Link
+                </button>
+             </div>
+
+             <div class="mt-6">
+                 <h3 class="font-semibold mb-3">Your Stats</h3>
+                 <div class="bg-gray-800 rounded-xl p-4 flex justify-between items-center border border-gray-700">
+                     <div class="flex items-center gap-3">
+                         <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center text-gray-400">
+                             <i class="fas fa-user-friends"></i>
+                         </div>
+                         <span class="text-gray-300">Invited Users</span>
+                     </div>
+                     <span class="font-bold text-xl" id="ref-count">0</span>
+                 </div>
+             </div>
+        </div>
+
+         <!-- Support View -->
+        <div id="view-support" class="view hidden">
+             <div class="flex items-center gap-3 mb-4">
+                <button onclick="navTo('dashboard')" class="text-gray-400 hover:text-white"><i class="fas fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold">Support</h2>
+            </div>
+             <div class="bg-gray-800 rounded-2xl p-6 shadow-lg text-center border border-gray-700">
+                <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 mx-auto mb-4 text-2xl">
+                    <i class="fas fa-headset"></i>
+                </div>
+                <h3 class="text-lg font-bold mb-2">Need Help?</h3>
+                <p class="text-gray-400 mb-6 text-sm">If you have any issues with connection or payment, please contact our administrator.</p>
+                <a href="https://t.me/Gl1ch555" class="block w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition active:scale-95">
+                    <i class="fab fa-telegram-plane mr-2"></i> Contact Admin
+                </a>
+             </div>
+        </div>
+
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="fixed bottom-0 w-full bg-gray-800 border-t border-gray-700 px-6 py-2 flex justify-between items-center pb-safe z-50">
+        <button onclick="navTo('dashboard')" class="nav-btn text-blue-500 flex flex-col items-center w-16" data-target="dashboard">
+            <i class="fas fa-home text-xl mb-1"></i>
+            <span class="text-[10px]">Home</span>
+        </button>
+        <button onclick="navTo('shop')" class="nav-btn text-gray-500 flex flex-col items-center w-16" data-target="shop">
+            <i class="fas fa-shopping-bag text-xl mb-1"></i>
+            <span class="text-[10px]">Shop</span>
+        </button>
+        <button onclick="navTo('configs')" class="nav-btn text-gray-500 flex flex-col items-center w-16" data-target="configs">
+            <i class="fas fa-list text-xl mb-1"></i>
+            <span class="text-[10px]">Configs</span>
+        </button>
+        <button onclick="navTo('referral')" class="nav-btn text-gray-500 flex flex-col items-center w-16" data-target="referral">
+            <i class="fas fa-gift text-xl mb-1"></i>
+            <span class="text-[10px]">Invite</span>
+        </button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
