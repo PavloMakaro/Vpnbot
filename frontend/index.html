@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <div id="app" class="p-4 max-w-md mx-auto">
+        <!-- Loading Screen -->
+        <div id="loading" class="flex items-center justify-center h-screen">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+        </div>
+
+        <!-- Login Error -->
+        <div id="error" class="hidden text-center mt-20 text-red-500">
+            <h2 class="text-xl font-bold">Error</h2>
+            <p id="error-msg"></p>
+        </div>
+
+        <!-- Main Content -->
+        <div id="main" class="hidden space-y-6">
+            <!-- Header -->
+            <div class="bg-gray-800 p-4 rounded-xl shadow-lg flex items-center justify-between">
+                <div>
+                    <h1 class="text-lg font-bold" id="user-name">User</h1>
+                    <p class="text-gray-400 text-sm">Balance: <span id="user-balance" class="text-green-400 font-bold">0</span> ₽</p>
+                </div>
+                <div class="text-right">
+                    <div id="sub-status" class="text-xs px-2 py-1 rounded bg-red-600">No Sub</div>
+                    <p class="text-xs text-gray-400 mt-1" id="days-left"></p>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex space-x-2 overflow-x-auto pb-2">
+                <button onclick="showView('shop')" class="nav-btn bg-blue-600 px-4 py-2 rounded-lg whitespace-nowrap">🛒 Shop</button>
+                <button onclick="showView('configs')" class="nav-btn bg-gray-700 px-4 py-2 rounded-lg whitespace-nowrap">🔐 My Configs</button>
+                <button onclick="showView('topup')" class="nav-btn bg-green-600 px-4 py-2 rounded-lg whitespace-nowrap">💳 Top Up</button>
+            </div>
+
+            <!-- Views -->
+
+            <!-- Shop View -->
+            <div id="view-shop" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold">Buy Subscription</h2>
+                <div id="plans-container" class="space-y-3">
+                    <!-- Plans injected here -->
+                </div>
+            </div>
+
+            <!-- Configs View -->
+            <div id="view-configs" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold">My Configs</h2>
+                <div id="configs-container" class="space-y-3">
+                    <!-- Configs injected here -->
+                </div>
+            </div>
+
+            <!-- Top Up View -->
+            <div id="view-topup" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold">Top Up Balance</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="initTopup(100)" class="bg-gray-700 p-3 rounded text-center hover:bg-gray-600">100 ₽</button>
+                    <button onclick="initTopup(200)" class="bg-gray-700 p-3 rounded text-center hover:bg-gray-600">200 ₽</button>
+                    <button onclick="initTopup(500)" class="bg-gray-700 p-3 rounded text-center hover:bg-gray-600">500 ₽</button>
+                </div>
+                <div class="mt-4">
+                     <label class="block text-sm text-gray-400 mb-1">Custom Amount</label>
+                     <div class="flex">
+                         <input type="number" id="custom-amount" class="bg-gray-800 border border-gray-600 rounded-l p-2 w-full text-white" placeholder="Amount">
+                         <button onclick="initCustomTopup()" class="bg-green-600 px-4 rounded-r">Pay</button>
+                     </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
