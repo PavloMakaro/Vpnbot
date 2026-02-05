@@ -1,0 +1,15 @@
+/* Additional custom styles */
+.nav-btn {
+    transition: transform 0.1s;
+}
+.nav-btn:active {
+    transform: scale(0.95);
+}
+::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 2px;
+}
