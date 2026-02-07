@@ -1,0 +1,25 @@
+body {
+    background-color: var(--tg-theme-bg-color, #111827);
+    color: var(--tg-theme-text-color, #ffffff);
+}
+
+.bg-gray-900 {
+    background-color: var(--tg-theme-bg-color, #111827);
+}
+
+.bg-gray-800 {
+    background-color: var(--tg-theme-secondary-bg-color, #1f2937);
+}
+
+.text-white {
+    color: var(--tg-theme-text-color, #ffffff);
+}
+
+.text-gray-400 {
+    color: var(--tg-theme-hint-color, #9ca3af);
+}
+
+button.bg-blue-600 {
+    background-color: var(--tg-theme-button-color, #2563eb);
+    color: var(--tg-theme-button-text-color, #ffffff);
+}
