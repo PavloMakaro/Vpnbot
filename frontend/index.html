@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex flex-col">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-50">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="flex-1 p-4 hidden">
+
+        <!-- User Profile Header -->
+        <div class="bg-gray-800 rounded-lg p-4 mb-6 shadow-lg">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-xl font-bold">
+                        <span id="user-avatar">?</span>
+                    </div>
+                    <div>
+                        <h2 id="user-name" class="font-bold text-lg">Loading...</h2>
+                        <p id="user-id" class="text-xs text-gray-400">ID: ...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <p class="text-xs text-gray-400">Balance</p>
+                    <p id="user-balance" class="text-xl font-bold text-green-400">0 ₽</p>
+                </div>
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <p class="text-xs text-gray-400">Subscription</p>
+                    <p id="sub-status" class="text-sm font-semibold text-red-400">Inactive</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <button onclick="showSection('topup')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                </svg>
+                <span>Top Up</span>
+            </button>
+            <button onclick="showSection('plans')" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+                </svg>
+                <span>Buy Sub</span>
+            </button>
+        </div>
+
+        <!-- My Configs Section Button -->
+        <button onclick="showSection('configs')" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg mb-6 flex items-center justify-between transition">
+            <div class="flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 002 2H4a2 2 0 01-2-2V5zm3 1h6v4H5V6zm6 6H5v2h6v-2z" clip-rule="evenodd" />
+                    <path d="M15 7h1a2 2 0 012 2v5.5a1.5 1.5 0 01-3 0V7z" />
+                </svg>
+                <span>My Configs</span>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+            </svg>
+        </button>
+
+    </main>
+
+    <!-- Sections (Modals/Pages) -->
+
+    <!-- Top Up Section -->
+    <div id="section-topup" class="fixed inset-0 bg-gray-900 z-40 hidden flex flex-col p-4 overflow-y-auto">
+        <div class="flex items-center mb-6">
+            <button onclick="hideSection('topup')" class="p-2 -ml-2 text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+            <h2 class="text-xl font-bold ml-2">Top Up Balance</h2>
+        </div>
+
+        <div class="space-y-4">
+            <p class="text-gray-400 text-sm">Select an amount or enter your own.</p>
+            <div class="grid grid-cols-3 gap-3">
+                <button onclick="selectAmount(100)" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg border border-gray-700 text-center">100 ₽</button>
+                <button onclick="selectAmount(300)" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg border border-gray-700 text-center">300 ₽</button>
+                <button onclick="selectAmount(500)" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-lg border border-gray-700 text-center">500 ₽</button>
+            </div>
+
+            <div class="relative mt-4">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">₽</span>
+                <input type="number" id="custom-amount" placeholder="Enter amount" class="w-full bg-gray-800 border border-gray-700 rounded-lg py-3 pl-8 pr-4 text-white focus:outline-none focus:border-blue-500">
+            </div>
+
+            <button onclick="initiatePayment()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg mt-6">
+                Proceed to Payment
+            </button>
+        </div>
+    </div>
+
+    <!-- Plans Section -->
+    <div id="section-plans" class="fixed inset-0 bg-gray-900 z-40 hidden flex flex-col p-4 overflow-y-auto">
+        <div class="flex items-center mb-6">
+            <button onclick="hideSection('plans')" class="p-2 -ml-2 text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+            <h2 class="text-xl font-bold ml-2">Subscription Plans</h2>
+        </div>
+
+        <div id="plans-container" class="space-y-4">
+            <!-- Plans will be loaded here -->
+            <div class="text-center text-gray-500 mt-10">Loading plans...</div>
+        </div>
+    </div>
+
+    <!-- Configs Section -->
+    <div id="section-configs" class="fixed inset-0 bg-gray-900 z-40 hidden flex flex-col p-4 overflow-y-auto">
+        <div class="flex items-center mb-6">
+            <button onclick="hideSection('configs')" class="p-2 -ml-2 text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+            <h2 class="text-xl font-bold ml-2">My Configs</h2>
+        </div>
+
+        <div id="configs-container" class="space-y-4">
+            <!-- Configs will be loaded here -->
+            <div class="text-center text-gray-500 mt-10">Loading configs...</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
