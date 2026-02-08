@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Mini App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased pb-20 select-none">
+
+    <!-- Loading Screen -->
+    <div id="loading" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-50">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-gray-800 p-4 sticky top-0 z-40 shadow-md">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-blue-400">VPN Bot</h1>
+                <p class="text-xs text-gray-400" id="user-name">Loading...</p>
+            </div>
+            <div class="bg-gray-700 px-3 py-1 rounded-full flex items-center space-x-2">
+                <span class="text-sm font-semibold" id="balance">0 ₽</span>
+                <button onclick="openTopupModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2 py-1 rounded transition">+</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="p-4 space-y-6">
+
+        <!-- Tab: Shop -->
+        <section id="tab-shop" class="tab-content active">
+            <h2 class="text-lg font-semibold mb-4">Выберите подписку</h2>
+            <div class="grid grid-cols-1 gap-4" id="plans-container">
+                <!-- Plans will be injected here -->
+                <div class="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-lg font-bold">1 Месяц</span>
+                        <span class="bg-blue-900 text-blue-300 text-xs px-2 py-1 rounded">50 ₽</span>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-4">Доступ ко всем серверам на 30 дней.</p>
+                    <button onclick="buySubscription('1_month')" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded transition">Купить</button>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-lg font-bold">2 Месяца</span>
+                        <span class="bg-purple-900 text-purple-300 text-xs px-2 py-1 rounded">90 ₽</span>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-4">Доступ на 60 дней. Выгода 10%.</p>
+                    <button onclick="buySubscription('2_months')" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded transition">Купить</button>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-lg font-bold">3 Месяца</span>
+                        <span class="bg-green-900 text-green-300 text-xs px-2 py-1 rounded">120 ₽</span>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-4">Доступ на 90 дней. Выгода 20%.</p>
+                    <button onclick="buySubscription('3_months')" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded transition">Купить</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Configs -->
+        <section id="tab-configs" class="tab-content hidden">
+            <h2 class="text-lg font-semibold mb-4">Мои Конфиги</h2>
+            <div id="configs-list" class="space-y-4">
+                <p class="text-gray-400 text-center py-8">Загрузка...</p>
+            </div>
+        </section>
+
+        <!-- Tab: Profile -->
+        <section id="tab-profile" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 text-center border border-gray-700">
+                <div class="w-20 h-20 bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">👤</div>
+                <h2 class="text-xl font-bold mb-1" id="profile-name">User</h2>
+                <p class="text-gray-400 text-sm mb-6" id="profile-username">@username</p>
+
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-gray-900 p-3 rounded">
+                        <p class="text-gray-500 text-xs">Баланс</p>
+                        <p class="text-lg font-bold" id="profile-balance">0 ₽</p>
+                    </div>
+                    <div class="bg-gray-900 p-3 rounded">
+                        <p class="text-gray-500 text-xs">Подписка</p>
+                        <p class="text-sm font-bold text-green-400" id="profile-sub">Нет</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-4 rounded text-left mb-4">
+                    <p class="text-xs text-gray-500 mb-2">Реферальная ссылка</p>
+                    <div class="flex items-center space-x-2 bg-gray-800 p-2 rounded">
+                        <code class="text-xs text-blue-300 flex-1 truncate" id="ref-link">...</code>
+                        <button onclick="copyRefLink()" class="text-gray-400 hover:text-white">📋</button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Приглашено: <span id="ref-count" class="text-white font-bold">0</span></p>
+                </div>
+
+                <button onclick="openSupport()" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm">Написать в поддержку</button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 flex justify-around p-3 z-40">
+        <button onclick="switchTab('shop')" class="nav-btn active flex flex-col items-center text-gray-400 hover:text-blue-400 transition w-full">
+            <span class="text-xl">🛒</span>
+            <span class="text-[10px] mt-1">Магазин</span>
+        </button>
+        <button onclick="switchTab('configs')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-blue-400 transition w-full">
+            <span class="text-xl">🔑</span>
+            <span class="text-[10px] mt-1">Конфиги</span>
+        </button>
+        <button onclick="switchTab('profile')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-blue-400 transition w-full">
+            <span class="text-xl">👤</span>
+            <span class="text-[10px] mt-1">Профиль</span>
+        </button>
+    </nav>
+
+    <!-- Modal: Topup -->
+    <div id="modal-topup" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-gray-800 rounded-lg w-full max-w-sm p-6 transform scale-95 transition-transform duration-300">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">Пополнение баланса</h3>
+                <button onclick="closeModal('modal-topup')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button onclick="setTopupAmount(100)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm">100 ₽</button>
+                <button onclick="setTopupAmount(300)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm">300 ₽</button>
+                <button onclick="setTopupAmount(500)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm">500 ₽</button>
+            </div>
+            <input type="number" id="topup-amount" placeholder="Другая сумма" class="w-full bg-gray-900 border border-gray-700 rounded p-3 mb-4 text-white focus:outline-none focus:border-blue-500">
+            <button onclick="submitTopup()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded transition">Оплатить</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

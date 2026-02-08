@@ -1,0 +1,36 @@
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.nav-btn.active {
+    color: #3b82f6; /* Tailwind blue-500 */
+}
+
+/* Modal Animations */
+#modal-topup.hidden {
+    display: none;
+}
+
+#modal-topup.flex {
+    display: flex;
+}
+
+#modal-topup.opacity-0 {
+    opacity: 0;
+}
+
+#modal-topup.opacity-100 {
+    opacity: 1;
+}
+
+#modal-topup .scale-95 {
+    transform: scale(0.95);
+}
+
+#modal-topup .scale-100 {
+    transform: scale(1);
+}
