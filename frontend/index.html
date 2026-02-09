@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot Mini App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+        .bg-secondary {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen font-sans">
+    <!-- Header -->
+    <header class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-secondary">
+        <div>
+            <h1 class="text-lg font-bold" id="user-name">Loading...</h1>
+            <p class="text-xs text-gray-500" id="user-status">Checking subscription...</p>
+        </div>
+        <div class="text-right">
+            <p class="font-bold text-lg" id="user-balance">0 ₽</p>
+            <button onclick="navigate('topup')" class="text-xs text-blue-500 underline">Top up</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-4 overflow-y-auto" id="main-content">
+        <!-- Loader -->
+        <div id="loader" class="text-center py-10">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <p class="mt-2 text-gray-500">Connecting...</p>
+        </div>
+
+        <!-- Home View -->
+        <div id="view-home" class="hidden space-y-4">
+            <div class="bg-secondary p-4 rounded-lg shadow-sm">
+                <h2 class="font-bold mb-2 text-sm uppercase tracking-wide text-gray-500">My Subscription</h2>
+                <div id="subscription-details" class="mb-4">
+                    <p class="text-lg font-medium">No active subscription</p>
+                </div>
+                <button onclick="navigate('shop')" class="w-full btn-primary py-2 rounded font-medium shadow">Extend Subscription</button>
+            </div>
+
+             <div class="bg-secondary p-4 rounded-lg shadow-sm">
+                <h2 class="font-bold mb-2 text-sm uppercase tracking-wide text-gray-500">Quick Actions</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="navigate('configs')" class="bg-white dark:bg-gray-700 py-3 rounded shadow-sm font-medium">My Configs</button>
+                    <button onclick="navigate('referral')" class="bg-white dark:bg-gray-700 py-3 rounded shadow-sm font-medium">Referral</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Shop View -->
+        <div id="view-shop" class="hidden space-y-4">
+            <h2 class="text-xl font-bold mb-4">Choose a Plan</h2>
+            <div id="plans-container" class="space-y-3">
+                <!-- Plans will be rendered here via JS -->
+                 <div class="bg-secondary p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-200 transition" onclick="buySubscription('1_month')">
+                    <div>
+                        <h3 class="font-bold">1 Month</h3>
+                        <p class="text-sm text-gray-500">30 days access</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-lg">50 ₽</p>
+                    </div>
+                </div>
+                <div class="bg-secondary p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-200 transition" onclick="buySubscription('2_months')">
+                    <div>
+                        <h3 class="font-bold">2 Months</h3>
+                        <p class="text-sm text-gray-500">60 days access</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-lg">90 ₽</p>
+                    </div>
+                </div>
+                <div class="bg-secondary p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-200 transition" onclick="buySubscription('3_months')">
+                    <div>
+                        <h3 class="font-bold">3 Months</h3>
+                        <p class="text-sm text-gray-500">90 days access</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-lg">120 ₽</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configs View -->
+        <div id="view-configs" class="hidden space-y-4">
+            <h2 class="text-xl font-bold mb-4">My Configurations</h2>
+            <div id="configs-container" class="space-y-3">
+                <p class="text-center text-gray-500">Loading configs...</p>
+            </div>
+        </div>
+
+        <!-- Topup View -->
+        <div id="view-topup" class="hidden space-y-4">
+            <h2 class="text-xl font-bold mb-4">Top Up Balance</h2>
+            <div class="bg-secondary p-4 rounded-lg">
+                <label class="block text-sm font-medium mb-2">Amount (RUB)</label>
+                <input type="number" id="topup-amount" placeholder="100" class="w-full p-3 border rounded mb-4 dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="initiatePayment()" class="w-full btn-primary py-3 rounded font-bold shadow">Pay with Yookassa</button>
+            </div>
+        </div>
+
+        <!-- Referral View -->
+        <div id="view-referral" class="hidden space-y-4">
+            <h2 class="text-xl font-bold mb-4">Referral Program</h2>
+             <div class="bg-secondary p-4 rounded-lg">
+                <p class="mb-4">Invite friends and get bonuses!</p>
+                <div class="bg-white dark:bg-gray-700 p-3 rounded mb-4 break-all font-mono text-sm" id="referral-link">
+                    Loading...
+                </div>
+                <button onclick="copyReferralLink()" class="w-full btn-primary py-2 rounded">Copy Link</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Navigation (Bottom Bar) -->
+    <nav class="border-t border-gray-200 dark:border-gray-700 p-2 flex justify-around bg-secondary pb-safe">
+        <button onclick="navigate('home')" class="flex flex-col items-center w-1/3 py-1 hover:text-blue-500 transition-colors" id="nav-home">
+            <span class="text-xl">🏠</span>
+            <span class="text-xs font-medium">Home</span>
+        </button>
+        <button onclick="navigate('shop')" class="flex flex-col items-center w-1/3 py-1 hover:text-blue-500 transition-colors" id="nav-shop">
+            <span class="text-xl">🛒</span>
+            <span class="text-xs font-medium">Shop</span>
+        </button>
+        <button onclick="navigate('configs')" class="flex flex-col items-center w-1/3 py-1 hover:text-blue-500 transition-colors" id="nav-configs">
+            <span class="text-xl">⚙️</span>
+            <span class="text-xs font-medium">Configs</span>
+        </button>
+    </nav>
+
+    <script src="app.js"></script>
+</body>
+</html>
