@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div id="loading" class="flex justify-center items-center h-screen">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+
+    <div id="app" class="hidden space-y-4">
+        <!-- Header -->
+        <div class="flex items-center space-x-3 mb-6">
+            <div class="w-12 h-12 rounded-full bg-gray-300 overflow-hidden">
+                <img id="user-avatar" src="" alt="Avatar" class="w-full h-full object-cover hidden">
+                <div id="user-initials" class="w-full h-full flex items-center justify-center text-xl font-bold text-gray-600"></div>
+            </div>
+            <div>
+                <h1 id="user-name" class="text-xl font-bold">User</h1>
+                <p class="text-sm opacity-70">Balance: <span id="user-balance">0</span> ₽</p>
+            </div>
+        </div>
+
+        <!-- Subscription Status -->
+        <div id="subscription-status" class="card p-4 rounded-lg mb-4">
+            <h2 class="text-lg font-semibold mb-2">Subscription</h2>
+            <p id="sub-text" class="text-sm">Checking...</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <button onclick="showView('buy-sub')" class="card p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:opacity-80 transition">
+                <span class="text-2xl">🛒</span>
+                <span class="font-medium">Buy VPN</span>
+            </button>
+            <button onclick="showView('top-up')" class="card p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:opacity-80 transition">
+                <span class="text-2xl">💳</span>
+                <span class="font-medium">Top Up</span>
+            </button>
+            <button onclick="showView('my-configs')" class="card p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:opacity-80 transition">
+                <span class="text-2xl">🔐</span>
+                <span class="font-medium">My Configs</span>
+            </button>
+            <button onclick="showView('support')" class="card p-4 rounded-lg flex flex-col items-center justify-center space-y-2 hover:opacity-80 transition">
+                <span class="text-2xl">💬</span>
+                <span class="font-medium">Support</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Views -->
+    <div id="view-buy-sub" class="view hidden space-y-4">
+        <h2 class="text-xl font-bold mb-4">Select a Plan</h2>
+        <div id="plans-container" class="space-y-3">
+            <!-- Plans will be injected here -->
+        </div>
+        <button onclick="goBack()" class="w-full py-3 mt-4 text-center opacity-70">Back</button>
+    </div>
+
+    <div id="view-top-up" class="view hidden space-y-4">
+        <h2 class="text-xl font-bold mb-4">Top Up Balance</h2>
+        <div class="space-y-3">
+            <input type="number" id="topup-amount" placeholder="Amount (RUB)" class="w-full p-3 rounded-lg border border-gray-300 text-black">
+            <button onclick="initiatePayment()" class="btn-primary w-full py-3 rounded-lg font-bold">Pay</button>
+        </div>
+        <button onclick="goBack()" class="w-full py-3 mt-4 text-center opacity-70">Back</button>
+    </div>
+
+    <div id="view-my-configs" class="view hidden space-y-4">
+        <h2 class="text-xl font-bold mb-4">My Configs</h2>
+        <div id="configs-container" class="space-y-3">
+            <!-- Configs will be injected here -->
+        </div>
+        <button onclick="goBack()" class="w-full py-3 mt-4 text-center opacity-70">Back</button>
+    </div>
+
+    <div id="view-support" class="view hidden space-y-4 text-center">
+        <h2 class="text-xl font-bold mb-4">Support</h2>
+        <p class="mb-4">If you have any issues, please contact our support.</p>
+        <a href="https://t.me/Gl1ch555" class="btn-primary px-6 py-2 rounded-lg inline-block">Contact Admin</a>
+        <button onclick="goBack()" class="w-full py-3 mt-4 text-center opacity-70">Back</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
