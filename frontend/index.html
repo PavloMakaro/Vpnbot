@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-lg relative pb-16">
+
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center sticky top-0 z-10">
+            <h1 class="text-xl font-bold">VPN Bot</h1>
+            <div id="user-balance" class="bg-blue-700 px-3 py-1 rounded-full text-sm">
+                0 ₽
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="p-4">
+
+            <!-- Home / Profile View -->
+            <div id="view-home" class="view space-y-4">
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h2 class="text-lg font-semibold mb-2">My Subscription</h2>
+                    <div id="subscription-status" class="text-gray-600">Loading...</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="router.navigate('shop')" class="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col items-center justify-center hover:bg-gray-50 transition">
+                        <span class="text-2xl mb-2">🛒</span>
+                        <span class="font-medium">Buy VPN</span>
+                    </button>
+                    <button onclick="router.navigate('topup')" class="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col items-center justify-center hover:bg-gray-50 transition">
+                        <span class="text-2xl mb-2">💳</span>
+                        <span class="font-medium">Top Up</span>
+                    </button>
+                    <button onclick="router.navigate('configs')" class="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col items-center justify-center hover:bg-gray-50 transition">
+                        <span class="text-2xl mb-2">🔐</span>
+                        <span class="font-medium">My Configs</span>
+                    </button>
+                    <button onclick="router.navigate('support')" class="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col items-center justify-center hover:bg-gray-50 transition">
+                        <span class="text-2xl mb-2">💬</span>
+                        <span class="font-medium">Support</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shop View -->
+            <div id="view-shop" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold mb-4">Select Plan</h2>
+                <div class="space-y-3">
+                    <!-- Plans will be injected here -->
+                    <div onclick="purchase('1_month')" class="bg-white p-4 rounded-lg shadow border border-gray-200 hover:border-blue-500 cursor-pointer transition flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-lg">1 Month</div>
+                            <div class="text-gray-500 text-sm">30 days access</div>
+                        </div>
+                        <div class="font-bold text-blue-600">50 ₽</div>
+                    </div>
+                    <div onclick="purchase('2_months')" class="bg-white p-4 rounded-lg shadow border border-gray-200 hover:border-blue-500 cursor-pointer transition flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-lg">2 Months</div>
+                            <div class="text-gray-500 text-sm">60 days access</div>
+                        </div>
+                        <div class="font-bold text-blue-600">90 ₽</div>
+                    </div>
+                    <div onclick="purchase('3_months')" class="bg-white p-4 rounded-lg shadow border border-gray-200 hover:border-blue-500 cursor-pointer transition flex justify-between items-center">
+                        <div>
+                            <div class="font-bold text-lg">3 Months</div>
+                            <div class="text-gray-500 text-sm">90 days access</div>
+                        </div>
+                        <div class="font-bold text-blue-600">120 ₽</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Up View -->
+            <div id="view-topup" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold mb-4">Top Up Balance</h2>
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <button onclick="setAmount(100)" class="p-2 border rounded hover:bg-gray-100">100 ₽</button>
+                    <button onclick="setAmount(300)" class="p-2 border rounded hover:bg-gray-100">300 ₽</button>
+                    <button onclick="setAmount(500)" class="p-2 border rounded hover:bg-gray-100">500 ₽</button>
+                </div>
+                <input type="number" id="topup-amount" placeholder="Enter amount (min 50)" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <button onclick="initiatePayment()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">Pay with Yookassa</button>
+            </div>
+
+            <!-- My Configs View -->
+            <div id="view-configs" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold mb-4">My Configurations</h2>
+                <div id="configs-list" class="space-y-3">
+                    <div class="text-gray-500 text-center py-8">Loading configs...</div>
+                </div>
+            </div>
+
+            <!-- Support View -->
+            <div id="view-support" class="view hidden space-y-4">
+                <h2 class="text-xl font-bold mb-4">Support</h2>
+                <div class="bg-white p-4 rounded-lg shadow border border-gray-200">
+                    <p class="mb-4">If you have any issues, please contact our support team.</p>
+                    <a href="https://t.me/Gl1ch555" target="_blank" class="block w-full text-center bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">Contact Admin</a>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-3 max-w-md mx-auto">
+            <button onclick="router.navigate('home')" class="flex flex-col items-center text-gray-500 hover:text-blue-600 focus:text-blue-600">
+                <span class="text-2xl">🏠</span>
+                <span class="text-xs">Home</span>
+            </button>
+            <button onclick="router.navigate('shop')" class="flex flex-col items-center text-gray-500 hover:text-blue-600 focus:text-blue-600">
+                <span class="text-2xl">🛒</span>
+                <span class="text-xs">Shop</span>
+            </button>
+            <button onclick="router.navigate('configs')" class="flex flex-col items-center text-gray-500 hover:text-blue-600 focus:text-blue-600">
+                <span class="text-2xl">🔐</span>
+                <span class="text-xs">Configs</span>
+            </button>
+        </nav>
+
+        <!-- Loading Overlay -->
+        <div id="loading" class="hidden absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

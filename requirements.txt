@@ -3,3 +3,4 @@ yookassa==2.3.1
 requests==2.31.0
 fastapi==0.103.0
 uvicorn==0.23.2
+pymongo
