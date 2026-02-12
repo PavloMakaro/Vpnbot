@@ -1,0 +1,7 @@
+/* Custom styles if needed */
+body {
+    -webkit-font-smoothing: antialiased;
+}
+.view {
+    transition: opacity 0.3s ease;
+}
