@@ -1,0 +1,38 @@
+body {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbar for Configs */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+.tab-active {
+    background-color: #2563eb;
+    color: white;
+}
+
+.tab-inactive {
+    background-color: transparent;
+    color: #9ca3af;
+}
+
+/* Telegram Theme Vars Integration (Optional override) */
+:root {
+    --tg-theme-bg-color: #111827;
+    --tg-theme-text-color: #ffffff;
+    --tg-theme-hint-color: #9ca3af;
+    --tg-theme-link-color: #3b82f6;
+    --tg-theme-button-color: #2563eb;
+    --tg-theme-button-text-color: #ffffff;
+}
