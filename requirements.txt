@@ -3,3 +3,6 @@ yookassa==2.3.1
 requests==2.31.0
 fastapi==0.103.0
 uvicorn==0.23.2
+pyTelegramBotAPI==4.14.0
+pymongo==4.6.1
+python-dotenv==1.0.0

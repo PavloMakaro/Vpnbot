@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Admin</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+    <h1 class="text-2xl font-bold mb-6">Admin Panel</h1>
+
+    <div class="mb-8 p-4 bg-gray-800 rounded-lg">
+        <h2 class="text-xl font-semibold mb-4">Add Configs</h2>
+        <div class="space-y-4">
+            <select id="period-select" class="w-full p-2 bg-gray-700 rounded border border-gray-600">
+                <option value="1_month">1 Month</option>
+                <option value="2_months">2 Months</option>
+                <option value="3_months">3 Months</option>
+            </select>
+            <textarea id="configs-input" rows="10" placeholder="Paste links here (one per line)" class="w-full p-2 bg-gray-700 rounded border border-gray-600 font-mono text-sm"></textarea>
+            <button onclick="addConfigs()" class="w-full py-2 bg-blue-600 rounded font-bold hover:bg-blue-700">Add Configs</button>
+        </div>
+        <p id="add-result" class="mt-2 text-sm text-gray-400"></p>
+    </div>
+
+    <div class="p-4 bg-gray-800 rounded-lg">
+        <h2 class="text-xl font-semibold mb-4">Statistics</h2>
+        <div id="stats-container" class="grid grid-cols-2 gap-4">
+            <div class="bg-gray-700 p-3 rounded">
+                <p class="text-xs text-gray-400">Total Users</p>
+                <p id="stat-users" class="text-xl font-bold">Loading...</p>
+            </div>
+            <div class="bg-gray-700 p-3 rounded">
+                <p class="text-xs text-gray-400">Revenue</p>
+                <p id="stat-revenue" class="text-xl font-bold text-green-400">...</p>
+            </div>
+            <div class="bg-gray-700 p-3 rounded">
+                <p class="text-xs text-gray-400">Active Subs</p>
+                <p id="stat-active" class="text-xl font-bold">...</p>
+            </div>
+            <div class="bg-gray-700 p-3 rounded">
+                <p class="text-xs text-gray-400">Configs Avail</p>
+                <p id="stat-configs" class="text-xl font-bold">...</p>
+            </div>
+        </div>
+        <button onclick="loadStats()" class="mt-4 text-sm text-blue-400 hover:text-blue-300">Refresh Stats</button>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
