@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
+        }
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        }
+    </style>
+</head>
+<body class="p-4">
+
+    <!-- Loading Screen -->
+    <div id="loading" class="flex items-center justify-center h-screen">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+    </div>
+
+    <!-- Home View -->
+    <div id="home-view" class="hidden space-y-4">
+        <div class="card p-4 rounded-lg shadow">
+            <h2 class="text-xl font-bold mb-2">My Profile</h2>
+            <p>Username: <span id="username" class="font-mono">@user</span></p>
+            <p>Balance: <span id="balance" class="font-bold text-green-600">0</span> ₽</p>
+            <p>Subscription: <span id="sub-status" class="font-semibold text-red-500">Inactive</span></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="router.navigate('shop')" class="btn-primary p-4 rounded-lg font-bold shadow text-center">
+                Buy VPN 🚀
+            </button>
+            <button onclick="router.navigate('configs')" class="btn-primary p-4 rounded-lg font-bold shadow text-center">
+                My Configs 📂
+            </button>
+        </div>
+
+        <button onclick="router.navigate('referral')" class="w-full card p-4 rounded-lg font-bold shadow text-center">
+            Referral System 🤝
+        </button>
+
+        <button onclick="Telegram.WebApp.close()" class="w-full p-2 text-center text-gray-500 text-sm">Close App</button>
+    </div>
+
+    <!-- Shop View -->
+    <div id="shop-view" class="hidden space-y-4">
+        <div class="flex items-center mb-4">
+            <button onclick="router.navigate('home')" class="mr-2">⬅️</button>
+            <h2 class="text-xl font-bold">Shop</h2>
+        </div>
+
+        <!-- Topup Section -->
+        <div class="card p-4 rounded-lg shadow mb-6">
+            <h3 class="font-bold mb-2">Top Up Balance</h3>
+            <div class="flex space-x-2 mb-2">
+                <input type="number" id="topup-amount" placeholder="Amount (RUB)" class="w-full p-2 border rounded text-black">
+            </div>
+            <button onclick="app.topUp()" class="btn-primary w-full p-2 rounded font-bold">Pay via Yookassa</button>
+        </div>
+
+        <h3 class="font-bold">Subscription Plans</h3>
+        <div id="products-list" class="space-y-3">
+            <!-- Products injected here -->
+        </div>
+    </div>
+
+    <!-- Configs View -->
+    <div id="configs-view" class="hidden space-y-4">
+        <div class="flex items-center mb-4">
+            <button onclick="router.navigate('home')" class="mr-2">⬅️</button>
+            <h2 class="text-xl font-bold">My Configs</h2>
+        </div>
+        <div id="configs-list" class="space-y-3">
+            <!-- Configs injected here -->
+        </div>
+    </div>
+
+    <!-- Referral View -->
+    <div id="referral-view" class="hidden space-y-4">
+         <div class="flex items-center mb-4">
+            <button onclick="router.navigate('home')" class="mr-2">⬅️</button>
+            <h2 class="text-xl font-bold">Referral System</h2>
+        </div>
+        <div class="card p-4 rounded-lg shadow text-center">
+            <p class="mb-2">Invite friends and earn bonuses!</p>
+            <div id="ref-link-container" class="bg-gray-200 p-2 rounded mb-2 overflow-hidden text-ellipsis text-black">
+                Loading...
+            </div>
+            <p class="text-sm text-gray-600">Referrals: <span id="ref-count">0</span></p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
