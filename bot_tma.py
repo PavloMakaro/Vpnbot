@@ -5,6 +5,7 @@ import sys
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ChatAction
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,8 +30,11 @@ async def command_start_handler(message: types.Message) -> None:
     """
     This handler receives messages with `/start` command
     """
+    # Simulate "Thinking" or "Typing" action for better UX
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+    await asyncio.sleep(1) # Short delay to make it feel natural
+
     # Create the Web App button
-    # If WEB_APP_URL is missing, fallback to a placeholder to prevent crash, but warn in logs
     url = WEB_APP_URL if WEB_APP_URL else "https://telegram.org"
 
     markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -39,7 +43,8 @@ async def command_start_handler(message: types.Message) -> None:
 
     await message.answer(
         "👋 **Welcome to VPN Bot!**\n\n"
-        "Manage your VPN subscription, balance, and configs directly in our Mini App.",
+        "Your secure connection starts here.\n"
+        "Manage your subscription, balance, and configs directly in our Mini App.",
         parse_mode="Markdown",
         reply_markup=markup
     )

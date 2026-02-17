@@ -36,7 +36,7 @@ exports = async function(amount) {
       "Idempotence-Key": [paymentId],
       "Authorization": ["Basic " + Buffer.from(`${SHOP_ID}:${SECRET_KEY}`).toString('base64')]
     },
-    body: JSON.stringify(payload),
+    body: payload,
     encodeBodyAsJSON: true
   });
 
