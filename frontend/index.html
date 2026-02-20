@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Views will be rendered here -->
+        <div id="loading" class="center-screen">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <nav class="bottom-nav" id="main-nav" style="display: none;">
+        <button class="nav-item active" data-view="home">
+            <span>🏠</span>
+            <span>Home</span>
+        </button>
+        <button class="nav-item" data-view="shop">
+            <span>🛒</span>
+            <span>Shop</span>
+        </button>
+        <button class="nav-item" data-view="profile">
+            <span>👤</span>
+            <span>Profile</span>
+        </button>
+        <button class="nav-item" data-view="support">
+            <span>💬</span>
+            <span>Support</span>
+        </button>
+    </nav>
+
+    <script src="app.js"></script>
+</body>
+</html>
