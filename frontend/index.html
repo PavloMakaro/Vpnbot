@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white font-sans h-screen flex flex-col">
+
+    <!-- Header / User Info -->
+    <header class="bg-gray-800 p-4 shadow-lg flex justify-between items-center sticky top-0 z-10">
+        <div class="flex items-center space-x-3">
+            <div id="user-avatar" class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-xl font-bold">
+                U
+            </div>
+            <div>
+                <h1 id="user-name" class="font-bold text-lg leading-tight">User</h1>
+                <p class="text-xs text-gray-400">ID: <span id="user-id">---</span></p>
+            </div>
+        </div>
+        <div class="text-right">
+            <p class="text-xs text-gray-400">Balance</p>
+            <p class="text-lg font-bold text-green-400"><span id="user-balance">0</span> ₽</p>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="flex-grow overflow-y-auto p-4 pb-24 space-y-6">
+
+        <!-- Tab: Buy VPN (Home) -->
+        <section id="tab-buy" class="tab-content active space-y-4">
+            <!-- Subscription Status Card -->
+            <div class="bg-gray-800 rounded-xl p-4 shadow border border-gray-700">
+                <h2 class="text-sm text-gray-400 uppercase tracking-wider mb-2">Subscription Status</h2>
+                <div id="subscription-status" class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span class="font-medium text-lg">Inactive</span>
+                </div>
+                <p id="subscription-date" class="text-sm text-gray-500 mt-1">No active subscription</p>
+            </div>
+
+            <!-- Buy Options -->
+            <h2 class="text-lg font-bold mt-6">Choose a Plan</h2>
+            <div class="grid grid-cols-1 gap-4">
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-blue-500 transition cursor-pointer" onclick="selectPlan('1_month', 50)">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg">1 Month</h3>
+                            <p class="text-sm text-gray-400">Standard Speed</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-xl font-bold text-blue-400">50 ₽</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-blue-500 transition cursor-pointer" onclick="selectPlan('2_months', 90)">
+                     <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg">2 Months</h3>
+                            <p class="text-sm text-gray-400">Save 10%</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-xl font-bold text-blue-400">90 ₽</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-blue-500 transition cursor-pointer" onclick="selectPlan('3_months', 120)">
+                     <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg">3 Months</h3>
+                            <p class="text-sm text-gray-400">Best Value</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-xl font-bold text-blue-400">120 ₽</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Top Up -->
+        <section id="tab-topup" class="tab-content hidden space-y-4">
+            <h2 class="text-xl font-bold">Top Up Balance</h2>
+            <div class="grid grid-cols-3 gap-3">
+                <button onclick="setTopUpAmount(100)" class="bg-gray-800 py-3 rounded-lg border border-gray-600 hover:bg-gray-700">100 ₽</button>
+                <button onclick="setTopUpAmount(200)" class="bg-gray-800 py-3 rounded-lg border border-gray-600 hover:bg-gray-700">200 ₽</button>
+                <button onclick="setTopUpAmount(500)" class="bg-gray-800 py-3 rounded-lg border border-gray-600 hover:bg-gray-700">500 ₽</button>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Custom Amount (₽)</label>
+                <input type="number" id="custom-amount" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" placeholder="Min 50">
+            </div>
+            <button onclick="initiateTopUp()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition shadow-lg mt-4">
+                Pay with Yookassa
+            </button>
+        </section>
+
+        <!-- Tab: My Configs -->
+        <section id="tab-configs" class="tab-content hidden space-y-4">
+            <h2 class="text-xl font-bold">My Configs</h2>
+            <div id="configs-list" class="space-y-3">
+                <!-- Config items will be injected here -->
+                <div class="text-center text-gray-500 py-8">Loading configs...</div>
+            </div>
+        </section>
+
+        <!-- Tab: Profile / Referral -->
+        <section id="tab-profile" class="tab-content hidden space-y-4">
+            <h2 class="text-xl font-bold">Profile & Referrals</h2>
+
+            <div class="bg-gray-800 rounded-xl p-4 space-y-3">
+                <h3 class="font-bold text-gray-300">Your Referral Link</h3>
+                <div class="flex items-center bg-gray-900 rounded-lg p-2 border border-gray-700">
+                    <input type="text" id="referral-link" readonly class="bg-transparent flex-grow text-sm text-gray-400 outline-none" value="Loading...">
+                    <button onclick="copyReferral()" class="text-blue-400 ml-2"><i class="fas fa-copy"></i></button>
+                </div>
+                <p class="text-xs text-gray-500">Invite friends and get bonuses!</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-2xl font-bold" id="referral-count">0</p>
+                    <p class="text-xs text-gray-400">Referrals</p>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-2xl font-bold text-green-400" id="referral-earnings">0 ₽</p>
+                    <p class="text-xs text-gray-400">Earned</p>
+                </div>
+            </div>
+
+             <a href="https://t.me/Gl1ch555" target="_blank" class="block w-full bg-gray-700 hover:bg-gray-600 text-center py-3 rounded-xl transition text-gray-300">
+                Contact Support
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bg-gray-800 border-t border-gray-700 fixed bottom-0 w-full pb-safe">
+        <div class="flex justify-around items-center h-16">
+            <button onclick="switchTab('buy')" class="nav-btn active flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-white transition">
+                <i class="fas fa-shopping-cart mb-1"></i>
+                <span class="text-xs">Buy VPN</span>
+            </button>
+            <button onclick="switchTab('topup')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-white transition">
+                <i class="fas fa-wallet mb-1"></i>
+                <span class="text-xs">Top Up</span>
+            </button>
+            <button onclick="switchTab('configs')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-white transition">
+                <i class="fas fa-server mb-1"></i>
+                <span class="text-xs">Configs</span>
+            </button>
+            <button onclick="switchTab('profile')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-white transition">
+                <i class="fas fa-user mb-1"></i>
+                <span class="text-xs">Profile</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Modal for Purchase Confirmation -->
+    <div id="modal-confirm" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gray-800 p-6 rounded-2xl w-11/12 max-w-sm transform scale-95 transition-transform duration-300 shadow-2xl border border-gray-700">
+            <h3 class="text-xl font-bold mb-2">Confirm Purchase</h3>
+            <p class="text-gray-300 mb-4">Buy <span id="modal-period" class="font-bold text-white">1 Month</span> subscription for <span id="modal-price" class="font-bold text-green-400">50 ₽</span>?</p>
+            <div class="flex space-x-3">
+                <button onclick="closeModal()" class="flex-1 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition">Cancel</button>
+                <button onclick="confirmPurchase()" class="flex-1 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 font-bold transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg border border-gray-700 z-50 hidden transition-opacity duration-300">
+        <span id="toast-message">Notification</span>
+    </div>
+
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
