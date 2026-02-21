@@ -1,0 +1,52 @@
+body {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+}
+
+.nav-btn.active {
+    color: #3B82F6; /* Tailwind Blue 500 */
+}
+
+/* Custom Scrollbar for Webkit */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+/* Smooth transitions for tab content */
+.tab-content {
+    transition: opacity 0.3s ease-in-out;
+}
+.tab-content.hidden {
+    display: none;
+    opacity: 0;
+}
+.tab-content.active {
+    display: block;
+    opacity: 1;
+}
+
+/* Modal animation */
+#modal-confirm.show {
+    display: flex;
+    opacity: 1;
+}
+#modal-confirm.show > div {
+    transform: scale(1);
+}
+
+/* Toast animation */
+#toast.show {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
