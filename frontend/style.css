@@ -1,0 +1,41 @@
+/* Custom styles and animations */
+
+body {
+    -webkit-tap-highlight-color: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Telegram Theme Adaptation */
+body.dark-mode {
+    --bg-color: #1c1c1e;
+    --text-color: #ffffff;
+    --card-bg: #2c2c2e;
+    --header-bg: #2c2c2e;
+    --secondary-text: #8e8e93;
+}
+
+body.light-mode {
+    --bg-color: #f2f2f7;
+    --text-color: #000000;
+    --card-bg: #ffffff;
+    --header-bg: #ffffff;
+    --secondary-text: #8e8e93;
+}
+
+/* Apply variables */
+.bg-gray-100 { background-color: var(--bg-color, #f2f2f7) !important; }
+.text-gray-900 { color: var(--text-color, #000000) !important; }
+.bg-white { background-color: var(--card-bg, #ffffff) !important; }
+.header-bg { background-color: var(--header-bg, #ffffff) !important; }
+.card-bg { background-color: var(--card-bg, #ffffff) !important; }
+
+/* Transitions */
+.page-transition {
+    transition: transform 0.3s ease-in-out;
+}
+
+/* Scrollbar hide */
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
