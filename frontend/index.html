@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased select-none">
+    <div id="app" class="container mx-auto p-4 max-w-md min-h-screen flex flex-col">
+        <!-- Loader -->
+        <div id="loader" class="flex-grow flex items-center justify-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+
+        <!-- Home View -->
+        <div id="view-home" class="hidden view flex-grow">
+            <div class="bg-gray-800 rounded-2xl p-6 mb-6 shadow-lg border border-gray-700">
+                <div class="flex items-center mb-6">
+                    <div class="w-14 h-14 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-2xl font-bold mr-4 shadow-md" id="user-avatar">?</div>
+                    <div>
+                        <h2 class="text-xl font-bold" id="user-name">User</h2>
+                        <p class="text-sm text-gray-400" id="user-username">@username</p>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center bg-gray-700/50 rounded-xl p-4 mb-3 border border-gray-600">
+                    <span class="text-gray-300 font-medium">Balance</span>
+                    <span class="text-2xl font-bold text-green-400" id="user-balance">0 ₽</span>
+                </div>
+                <div class="flex justify-between items-center bg-gray-700/50 rounded-xl p-4 border border-gray-600">
+                    <span class="text-gray-300 font-medium">Subscription</span>
+                    <span class="text-sm font-medium px-2 py-1 rounded bg-gray-600" id="user-subscription">Inactive</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <button onclick="app.showView('view-topup')" class="bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold py-4 px-4 rounded-2xl shadow-lg transition transform active:scale-95 flex flex-col items-center justify-center border border-blue-500/30">
+                    <svg class="w-8 h-8 mb-2 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    Top Up
+                </button>
+                <button onclick="app.showView('view-buy')" class="bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold py-4 px-4 rounded-2xl shadow-lg transition transform active:scale-95 flex flex-col items-center justify-center border border-purple-500/30">
+                    <svg class="w-8 h-8 mb-2 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Buy VPN
+                </button>
+            </div>
+
+            <button onclick="app.showView('view-configs')" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 px-4 rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center border border-gray-700">
+                <svg class="w-6 h-6 mr-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                My Configs
+            </button>
+        </div>
+
+        <!-- Top Up View -->
+        <div id="view-topup" class="hidden view flex-grow">
+            <h2 class="text-2xl font-bold mb-6">Top Up Balance</h2>
+            <div class="bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+                <label class="block text-gray-400 mb-2 font-medium">Amount (₽)</label>
+                <input type="number" id="topup-amount" class="w-full bg-gray-700 text-white rounded-xl p-4 mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xl font-bold text-center" placeholder="100" min="50">
+                <div class="grid grid-cols-3 gap-3 mb-8">
+                    <button onclick="document.getElementById('topup-amount').value=100" class="bg-gray-700 hover:bg-gray-600 py-3 rounded-xl text-sm font-bold transition">100</button>
+                    <button onclick="document.getElementById('topup-amount').value=300" class="bg-gray-700 hover:bg-gray-600 py-3 rounded-xl text-sm font-bold transition">300</button>
+                    <button onclick="document.getElementById('topup-amount').value=500" class="bg-gray-700 hover:bg-gray-600 py-3 rounded-xl text-sm font-bold transition">500</button>
+                </div>
+                <button onclick="app.createPayment()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition transform active:scale-95 shadow-lg flex items-center justify-center">
+                    Pay via YooKassa
+                </button>
+            </div>
+        </div>
+
+        <!-- Buy View -->
+        <div id="view-buy" class="hidden view flex-grow">
+            <h2 class="text-2xl font-bold mb-4">Choose Plan</h2>
+            <div id="plans-container" class="space-y-4">
+                <!-- Plans will be injected here -->
+            </div>
+        </div>
+
+        <!-- Configs View -->
+        <div id="view-configs" class="hidden view flex-grow">
+            <h2 class="text-2xl font-bold mb-4">My Configs</h2>
+            <div id="configs-container" class="space-y-4 overflow-y-auto max-h-[70vh] pb-20">
+                <!-- Configs will be injected here -->
+            </div>
+        </div>
+
+        <!-- Bottom Back Button (Fixed) -->
+        <div id="back-button-container" class="fixed bottom-0 left-0 right-0 p-4 bg-gray-900/90 backdrop-blur hidden">
+            <button onclick="app.showView('view-home')" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl shadow-lg border border-gray-700">
+                Back to Menu
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl hidden transition-all duration-300 z-50 border border-gray-600 flex items-center">
+        <span id="toast-message">Message</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
