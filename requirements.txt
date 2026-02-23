@@ -1,5 +1,6 @@
 aiogram==3.3.0
-yookassa==2.3.1
+pymongo==4.5.0
+motor==3.3.1
 requests==2.31.0
-fastapi==0.103.0
-uvicorn==0.23.2
+yookassa==2.3.1
+python-dotenv
