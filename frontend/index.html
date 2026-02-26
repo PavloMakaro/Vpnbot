@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@1.2.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen">
+    <div id="app" class="p-4 max-w-md mx-auto relative">
+        <!-- Loading Overlay -->
+        <div id="loading" class="absolute inset-0 bg-gray-900 flex items-center justify-center z-50">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-xl font-bold" id="user-avatar">
+                    ?
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold" id="user-name">Loading...</h1>
+                    <p class="text-xs text-gray-400">ID: <span id="user-id">...</span></p>
+                </div>
+            </div>
+            <div class="bg-gray-800 rounded-lg px-3 py-1 border border-gray-700">
+                <p class="text-xs text-gray-400">Balance</p>
+                <p class="text-sm font-bold text-green-400"><span id="user-balance">0</span> ₽</p>
+            </div>
+        </div>
+
+        <!-- Subscription Status -->
+        <div class="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700 shadow-lg">
+            <h2 class="text-sm text-gray-400 mb-1">Subscription Status</h2>
+            <div class="flex items-center justify-between">
+                <span id="sub-status" class="text-lg font-bold text-red-400">Inactive</span>
+                <span id="sub-date" class="text-sm text-gray-500 hidden">Expires: ...</span>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex space-x-2 mb-6 border-b border-gray-700 pb-2">
+            <button onclick="switchTab('buy')" id="tab-buy" class="flex-1 py-2 text-center text-blue-400 border-b-2 border-blue-400 font-medium">Buy VPN</button>
+            <button onclick="switchTab('configs')" id="tab-configs" class="flex-1 py-2 text-center text-gray-400 font-medium hover:text-white">My Configs</button>
+        </div>
+
+        <!-- Buy VPN Section -->
+        <div id="section-buy" class="space-y-6">
+            <!-- Top Up -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <h3 class="font-bold mb-3">Top Up Balance</h3>
+                <div class="flex space-x-2">
+                    <input type="number" id="topup-amount" placeholder="Amount (RUB)" class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <button onclick="topUp()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Pay</button>
+                </div>
+                <div class="flex space-x-2 mt-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <button onclick="setTopUp(100)" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm whitespace-nowrap">100 ₽</button>
+                    <button onclick="setTopUp(200)" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm whitespace-nowrap">200 ₽</button>
+                    <button onclick="setTopUp(500)" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm whitespace-nowrap">500 ₽</button>
+                </div>
+            </div>
+
+            <!-- Subscription Plans -->
+            <div>
+                <h3 class="font-bold mb-3">Choose Plan</h3>
+                <div class="space-y-3">
+                    <div class="bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-xl p-4 flex justify-between items-center transition cursor-pointer" onclick="buySubscription('1_month')">
+                        <div>
+                            <p class="font-bold">1 Month</p>
+                            <p class="text-xs text-gray-400">30 days access</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-blue-400">50 ₽</p>
+                            <button class="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1 rounded mt-1">Buy</button>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-xl p-4 flex justify-between items-center transition cursor-pointer" onclick="buySubscription('2_months')">
+                        <div>
+                            <p class="font-bold">2 Months</p>
+                            <p class="text-xs text-gray-400">60 days access</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-blue-400">90 ₽</p>
+                            <button class="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1 rounded mt-1">Buy</button>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-xl p-4 flex justify-between items-center transition cursor-pointer" onclick="buySubscription('3_months')">
+                        <div>
+                            <p class="font-bold">3 Months</p>
+                            <p class="text-xs text-gray-400">90 days access</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-blue-400">120 ₽</p>
+                            <button class="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1 rounded mt-1">Buy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Configs Section -->
+        <div id="section-configs" class="hidden space-y-4">
+            <div id="configs-list" class="space-y-3">
+                <!-- Configs will be loaded here -->
+                <p class="text-center text-gray-500 mt-10">Loading configs...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
