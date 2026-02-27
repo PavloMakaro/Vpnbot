@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/realm-web/dist/realm-web.browser.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="p-4 flex justify-between items-center bg-gray-800 shadow-md">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-shield-alt text-blue-500 text-2xl"></i>
+            <span class="font-bold text-lg">VPN Bot</span>
+        </div>
+        <div id="balance" class="bg-gray-700 px-3 py-1 rounded-full text-sm font-medium">
+            Loading...
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-4 space-y-6">
+        <!-- Profile Section -->
+        <section id="profile-section" class="bg-gray-800 p-4 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">Profile</h2>
+            <div class="space-y-2">
+                <p class="text-gray-400">Username: <span id="username" class="text-white">...</span></p>
+                <p class="text-gray-400">Subscription: <span id="subscription-status" class="text-white">Checking...</span></p>
+                <button id="btn-topup" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4 transition duration-200">
+                    Top Up Balance
+                </button>
+            </div>
+        </section>
+
+        <!-- Buy Subscription Section -->
+        <section id="buy-section" class="bg-gray-800 p-4 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">Buy Subscription</h2>
+            <div id="plans-container" class="space-y-3">
+                <!-- Plans will be injected here via JS -->
+                <div class="animate-pulse flex space-x-4">
+                    <div class="flex-1 space-y-4 py-1">
+                        <div class="h-4 bg-gray-700 rounded w-3/4"></div>
+                        <div class="space-y-2">
+                            <div class="h-4 bg-gray-700 rounded"></div>
+                            <div class="h-4 bg-gray-700 rounded w-5/6"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- My Configs Section -->
+        <section id="configs-section" class="bg-gray-800 p-4 rounded-xl shadow-lg">
+             <h2 class="text-xl font-semibold mb-4">My Configs</h2>
+             <div id="configs-list" class="space-y-3">
+                 <p class="text-gray-500 text-center">No active configs found.</p>
+             </div>
+        </section>
+
+        <!-- Referral Section -->
+        <section id="referral-section" class="bg-gray-800 p-4 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">Referral Program</h2>
+            <p class="text-sm text-gray-400 mb-2">Invite friends and earn bonuses!</p>
+            <div class="bg-gray-700 p-3 rounded flex justify-between items-center">
+                 <span id="referral-link" class="text-xs truncate text-blue-300">Loading link...</span>
+                 <button id="copy-ref-btn" class="ml-2 text-gray-300 hover:text-white">
+                     <i class="far fa-copy"></i>
+                 </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Referrals: <span id="referral-count">0</span></p>
+        </section>
+    </main>
+
+    <!-- Navigation (Bottom Bar) -->
+    <!-- <nav class="fixed bottom-0 w-full bg-gray-800 border-t border-gray-700 flex justify-around p-3">
+        <button class="text-blue-500 flex flex-col items-center">
+            <i class="fas fa-home text-xl"></i>
+            <span class="text-xs mt-1">Home</span>
+        </button>
+        <button class="text-gray-400 hover:text-white flex flex-col items-center">
+            <i class="fas fa-cog text-xl"></i>
+            <span class="text-xs mt-1">Settings</span>
+        </button>
+    </nav> -->
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none z-50">
+        Message
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
