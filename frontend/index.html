@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Mini App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- MongoDB Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen font-sans antialiased">
+
+    <!-- Loading Screen -->
+    <div id="loading" class="fixed inset-0 flex items-center justify-center bg-gray-900 z-50 transition-opacity duration-300">
+        <div class="flex flex-col items-center">
+            <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-400 text-lg">Authenticating...</p>
+        </div>
+    </div>
+
+    <!-- Error Screen -->
+    <div id="error-screen" class="hidden fixed inset-0 flex items-center justify-center bg-gray-900 z-50 p-4">
+        <div class="bg-red-900 text-white p-6 rounded-lg max-w-sm w-full shadow-lg text-center fade-in">
+            <h2 class="text-xl font-bold mb-2">Error</h2>
+            <p id="error-message" class="text-sm mb-4">Something went wrong.</p>
+            <button onclick="window.location.reload()" class="bg-red-700 hover:bg-red-600 px-4 py-2 rounded transition">Retry</button>
+        </div>
+    </div>
+
+    <!-- Main Content App Container -->
+    <div id="app-content" class="hidden pb-24">
+
+        <!-- Header Profile Summary -->
+        <header class="bg-gray-800 shadow-md p-4 sticky top-0 z-10 flex justify-between items-center slide-down">
+            <div>
+                <h1 class="text-xl font-bold" id="display-name">VPN App</h1>
+                <p class="text-xs text-gray-400" id="display-username">@username</p>
+            </div>
+            <div class="text-right">
+                <div class="text-sm text-gray-400">Balance</div>
+                <div class="text-lg font-bold text-green-400" id="display-balance">0 ₽</div>
+            </div>
+        </header>
+
+        <!-- Main Views -->
+        <main class="p-4">
+
+            <!-- Dashboard / Profile View -->
+            <section id="view-dashboard" class="view-section slide-up">
+
+                <!-- Subscription Status -->
+                <div class="bg-gray-800 rounded-xl p-5 mb-4 shadow-lg border border-gray-700">
+                    <h2 class="text-lg font-semibold mb-2 text-gray-300">Subscription Status</h2>
+                    <div id="sub-status-container" class="flex items-center">
+                        <div id="sub-status-icon" class="h-10 w-10 rounded-full flex items-center justify-center mr-3 bg-red-900 text-red-400">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </div>
+                        <div>
+                            <p id="sub-status-text" class="text-xl font-bold">Inactive</p>
+                            <p id="sub-status-detail" class="text-sm text-gray-400">No active subscription</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <button onclick="switchTab('view-buy')" class="bg-blue-600 hover:bg-blue-500 rounded-xl p-4 flex flex-col items-center justify-center shadow transition transform hover:scale-105">
+                        <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        <span class="font-medium">Buy VPN</span>
+                    </button>
+                    <button onclick="switchTab('view-topup')" class="bg-green-600 hover:bg-green-500 rounded-xl p-4 flex flex-col items-center justify-center shadow transition transform hover:scale-105">
+                        <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        <span class="font-medium">Top Up</span>
+                    </button>
+                </div>
+
+                <!-- My Configs -->
+                <h2 class="text-lg font-semibold mb-3 text-gray-300">My Configs</h2>
+                <div id="configs-container" class="space-y-3">
+                    <p class="text-gray-500 text-sm text-center py-4">Loading configs...</p>
+                </div>
+
+            </section>
+
+            <!-- Buy VPN View -->
+            <section id="view-buy" class="view-section hidden slide-up">
+                <h2 class="text-2xl font-bold mb-4">Choose Period</h2>
+
+                <div id="products-container" class="space-y-4">
+                    <div class="flex justify-center py-8">
+                        <svg class="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Top Up View -->
+            <section id="view-topup" class="view-section hidden slide-up">
+                <h2 class="text-2xl font-bold mb-4">Top Up Balance</h2>
+
+                <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 mb-6">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Enter Amount (RUB)</label>
+                    <div class="flex">
+                        <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-600 bg-gray-700 text-gray-300 sm:text-sm">₽</span>
+                        <input type="number" id="topup-amount" min="50" max="50000" placeholder="e.g. 500" class="flex-1 block w-full rounded-none rounded-r-md sm:text-sm border-gray-600 bg-gray-900 text-white px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">Min: 50 ₽, Max: 50,000 ₽</p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3 mb-6">
+                    <button onclick="setTopupAmount(100)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm font-medium transition">100 ₽</button>
+                    <button onclick="setTopupAmount(500)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm font-medium transition">500 ₽</button>
+                    <button onclick="setTopupAmount(1000)" class="bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm font-medium transition">1000 ₽</button>
+                </div>
+
+                <button id="btn-pay" onclick="initiateTopup()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl shadow transition flex justify-center items-center">
+                    <span>Proceed to Payment</span>
+                </button>
+            </section>
+
+            <!-- Success / Config View -->
+            <section id="view-success" class="view-section hidden fade-in text-center py-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-green-900 rounded-full mb-6">
+                    <svg class="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold mb-2 text-green-400" id="success-title">Success!</h2>
+                <p class="text-gray-300 mb-8" id="success-message">Operation completed successfully.</p>
+
+                <div id="success-config-data" class="hidden bg-gray-800 p-4 rounded-lg text-left mb-8 border border-gray-700 relative">
+                    <p class="text-sm text-gray-400 mb-1">Your Config Link:</p>
+                    <div class="flex items-center">
+                        <input type="text" id="success-config-link" readonly class="bg-gray-900 border border-gray-600 text-sm rounded block w-full p-2.5 mr-2" value="vless://...">
+                        <button onclick="copyToClipboard('success-config-link')" class="bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button onclick="loadProfile(); switchTab('view-dashboard')" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-xl transition">
+                    Back to Dashboard
+                </button>
+            </section>
+
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="fixed bottom-0 w-full bg-gray-800 border-t border-gray-700 flex justify-around p-3 z-10 pb-safe">
+            <button onclick="switchTab('view-dashboard')" class="nav-btn flex flex-col items-center text-blue-400" id="nav-dashboard">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                <span class="text-xs mt-1">Home</span>
+            </button>
+            <button onclick="switchTab('view-buy')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-gray-300" id="nav-buy">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                <span class="text-xs mt-1">Buy</span>
+            </button>
+            <button onclick="switchTab('view-topup')" class="nav-btn flex flex-col items-center text-gray-400 hover:text-gray-300" id="nav-topup">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span class="text-xs mt-1">Wallet</span>
+            </button>
+        </nav>
+
+        <!-- Action Overlay loading -->
+        <div id="action-overlay" class="hidden fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-80 z-50">
+            <div class="flex flex-col items-center">
+                <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="text-white text-lg font-medium" id="overlay-text">Processing...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>
