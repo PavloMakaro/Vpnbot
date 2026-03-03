@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Telegram Web App Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-white font-sans antialiased overflow-x-hidden min-h-screen">
+    <div id="loading" class="fixed inset-0 bg-gray-900 z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-xl font-medium text-gray-300">Загрузка данных...</p>
+    </div>
+
+    <!-- Container -->
+    <div class="max-w-md mx-auto p-4 pb-20 fade-in hidden" id="app-container">
+
+        <!-- Header Profile -->
+        <div class="bg-gray-800 rounded-2xl p-5 mb-6 shadow-lg border border-gray-700 slide-up delay-100">
+            <div class="flex items-center space-x-4 mb-4">
+                <div class="w-14 h-14 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-2xl font-bold shadow-inner">
+                    <span id="user-initial">U</span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold" id="user-name">Загрузка...</h1>
+                    <p class="text-sm text-gray-400" id="user-username">@username</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-900 rounded-xl p-4 flex justify-between items-center border border-gray-700">
+                <div>
+                    <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Баланс</p>
+                    <p class="text-2xl font-bold text-green-400"><span id="user-balance">0</span> ₽</p>
+                </div>
+                <button id="btn-topup" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors shadow-md text-sm">
+                    Пополнить
+                </button>
+            </div>
+        </div>
+
+        <!-- Subscription Status -->
+        <div class="bg-gray-800 rounded-2xl p-5 mb-6 shadow-lg border border-gray-700 slide-up delay-200">
+            <h2 class="text-lg font-bold mb-3 flex items-center">
+                <span class="text-xl mr-2">📅</span> Статус подписки
+            </h2>
+            <div class="p-3 bg-gray-900 rounded-lg border border-gray-700">
+                <p id="sub-status" class="text-sm">Загрузка...</p>
+            </div>
+            <button id="btn-buy-sub" class="w-full mt-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg transform active:scale-95">
+                Купить подписку 🚀
+            </button>
+        </div>
+
+        <!-- My Configs -->
+        <div class="bg-gray-800 rounded-2xl p-5 mb-6 shadow-lg border border-gray-700 slide-up delay-300">
+            <h2 class="text-lg font-bold mb-4 flex items-center">
+                <span class="text-xl mr-2">🔐</span> Мои конфиги
+            </h2>
+            <div id="configs-list" class="space-y-3">
+                <p class="text-sm text-gray-400 text-center py-2">Загрузка конфигов...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modals -->
+    <!-- Topup Modal -->
+    <div id="modal-topup" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl w-full max-w-sm p-6 transform scale-95 opacity-0 transition-all duration-300" id="modal-topup-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Пополнение</h3>
+                <button class="text-gray-400 hover:text-white close-modal text-2xl">&times;</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button class="amount-btn bg-gray-700 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors" data-amount="100">100 ₽</button>
+                <button class="amount-btn bg-gray-700 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors" data-amount="200">200 ₽</button>
+                <button class="amount-btn bg-gray-700 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors" data-amount="500">500 ₽</button>
+            </div>
+
+            <div class="mb-5">
+                <label class="block text-sm text-gray-400 mb-2">Или введите свою сумму (мин. 50 ₽)</label>
+                <input type="number" id="custom-amount" class="w-full bg-gray-900 border border-gray-700 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-blue-500" placeholder="0">
+            </div>
+
+            <button id="btn-pay" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                Оплатить через ЮKassa
+            </button>
+        </div>
+    </div>
+
+    <!-- Buy Subscription Modal -->
+    <div id="modal-sub" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl w-full max-w-sm p-6 transform scale-95 opacity-0 transition-all duration-300" id="modal-sub-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Выбор периода</h3>
+                <button class="text-gray-400 hover:text-white close-modal text-2xl">&times;</button>
+            </div>
+
+            <div id="sub-options" class="space-y-3 mb-5">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Config Modal -->
+    <div id="modal-config" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl w-full max-w-sm p-6 transform scale-95 opacity-0 transition-all duration-300" id="modal-config-content">
+            <div class="text-center mb-4">
+                <div class="w-16 h-16 bg-green-500 rounded-full mx-auto flex items-center justify-center text-3xl mb-3">✅</div>
+                <h3 class="text-xl font-bold">Подписка активна!</h3>
+                <p class="text-sm text-gray-400 mt-1">Ваш конфиг успешно выдан</p>
+            </div>
+
+            <div class="bg-gray-900 p-3 rounded-lg border border-gray-700 mb-4 overflow-hidden">
+                <p class="text-xs text-gray-500 mb-1">Ссылка на конфиг:</p>
+                <code id="new-config-link" class="text-sm text-blue-400 break-all select-all"></code>
+            </div>
+
+            <button id="btn-copy-config" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold transition-all mb-2">
+                Скопировать ссылку
+            </button>
+            <button class="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-all close-modal">
+                Закрыть
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 border border-gray-700 text-white px-6 py-3 rounded-full shadow-2xl opacity-0 transition-opacity duration-300 pointer-events-none z-50">
+        <span id="toast-msg">Сообщение</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
