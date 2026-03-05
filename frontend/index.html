@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Store</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+    <!-- Telegram WebApp JS -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #f3f4f6);
+            color: var(--tg-theme-text-color, #1f2937);
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #ffffff);
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #3b82f6);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .slide-up {
+            animation: slideUp 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        /* Loader */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--tg-theme-button-color, #3b82f6);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="app" class="container relative min-h-screen pb-20">
+    <!-- Header -->
+    <header class="text-center mb-6 pt-4">
+        <h1 class="text-2xl font-bold">VPN Store</h1>
+        <p class="text-sm opacity-80" id="user-greeting">Loading profile...</p>
+    </header>
+
+    <!-- Main Loader -->
+    <div id="main-loader" class="text-center py-10">
+        <div class="loader"></div>
+        <p>Connecting to backend...</p>
+    </div>
+
+    <!-- Error Message -->
+    <div id="error-message" class="hidden text-center text-red-500 my-4 card fade-in">
+        <p id="error-text"></p>
+        <button onclick="window.location.reload()" class="mt-2 px-4 py-2 bg-gray-200 rounded text-gray-800">Retry</button>
+    </div>
+
+    <!-- Main Content (Hidden initially) -->
+    <div id="main-content" class="hidden">
+
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="fade-in">
+            <!-- Balance Card -->
+            <div class="card flex justify-between items-center">
+                <div>
+                    <p class="text-sm opacity-80">Your Balance</p>
+                    <p class="text-2xl font-bold"><span id="user-balance">0</span> ₽</p>
+                </div>
+                <button onclick="showTopUp()" class="btn-primary px-4 py-2 rounded-lg font-semibold shadow">
+                    Top Up
+                </button>
+            </div>
+
+            <!-- Subscription Status -->
+            <div class="card">
+                <h2 class="text-lg font-semibold mb-2">Subscription</h2>
+                <div id="sub-status-active" class="hidden text-green-600 mb-2">
+                    <p class="font-bold">✅ Active</p>
+                    <p class="text-sm">Expires: <span id="sub-end-date"></span> (<span id="sub-days-left"></span> days)</p>
+                </div>
+                <div id="sub-status-inactive" class="hidden text-red-500 mb-2">
+                    <p class="font-bold">❌ Inactive</p>
+                </div>
+                <button onclick="showStore()" class="w-full mt-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded border border-gray-300 transition duration-150">
+                    Buy Subscription
+                </button>
+            </div>
+
+            <!-- User Configs -->
+            <div class="card">
+                <h2 class="text-lg font-semibold mb-2">Your Configs</h2>
+                <div id="configs-list" class="space-y-3">
+                    <!-- Config items injected here -->
+                </div>
+                <p id="no-configs-msg" class="text-sm opacity-70 hidden">You don't have any configs yet.</p>
+            </div>
+        </div>
+
+        <!-- Store View -->
+        <div id="view-store" class="hidden fade-in">
+            <button onclick="showDashboard()" class="mb-4 text-sm flex items-center opacity-80 hover:opacity-100">
+                ← Back to Dashboard
+            </button>
+            <h2 class="text-xl font-bold mb-4">Select Plan</h2>
+            <div id="store-plans" class="space-y-3">
+                <!-- Plans injected here -->
+            </div>
+        </div>
+
+        <!-- Top Up View -->
+        <div id="view-topup" class="hidden fade-in">
+            <button onclick="showDashboard()" class="mb-4 text-sm flex items-center opacity-80 hover:opacity-100">
+                ← Back to Dashboard
+            </button>
+            <h2 class="text-xl font-bold mb-4">Top Up Balance</h2>
+            <div class="card">
+                <p class="mb-4 text-sm">Select amount (₽)</p>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button onclick="setTopUpAmount(100)" class="bg-gray-100 py-2 rounded border border-gray-200 text-gray-800 hover:bg-gray-200">100</button>
+                    <button onclick="setTopUpAmount(200)" class="bg-gray-100 py-2 rounded border border-gray-200 text-gray-800 hover:bg-gray-200">200</button>
+                    <button onclick="setTopUpAmount(500)" class="bg-gray-100 py-2 rounded border border-gray-200 text-gray-800 hover:bg-gray-200">500</button>
+                </div>
+                <div class="flex space-x-2">
+                    <input type="number" id="custom-amount" placeholder="Custom amount" class="flex-1 p-2 border rounded text-gray-800 bg-white" min="50" max="50000">
+                    <button onclick="processTopUp()" class="btn-primary px-4 py-2 rounded font-semibold shadow">Pay</button>
+                </div>
+                <p class="text-xs mt-2 opacity-70">Min: 50 ₽, Max: 50,000 ₽</p>
+            </div>
+
+            <div id="payment-status" class="hidden card text-center mt-4">
+                <div class="loader mx-auto"></div>
+                <p class="mt-2">Waiting for payment confirmation...</p>
+                <p class="text-xs opacity-70 mt-1">Please complete the payment in the opened window.</p>
+                <button onclick="checkCurrentPayment()" class="mt-3 text-sm underline opacity-80">Check Status Now</button>
+                <button onclick="cancelPaymentWait()" class="mt-3 ml-4 text-sm underline text-red-500">Cancel</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
