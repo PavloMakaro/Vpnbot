@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+    <!-- Telegram WebApp Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .slide-up {
+            animation: slideUp 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Dark mode support via Tailwind */
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .button {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .button-secondary {
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000000);
+        }
+
+        .card {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            border: 1px solid var(--tg-theme-secondary-bg-color, #e5e7eb);
+        }
+    </style>
+</head>
+<body class="p-4 flex flex-col items-center justify-start min-h-screen">
+
+    <div id="loader" class="flex flex-col items-center justify-center mt-20">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-500">Загрузка...</p>
+    </div>
+
+    <div id="app" class="w-full max-w-md hidden fade-in">
+
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-bold mb-2">VPN Bot</h1>
+            <p class="text-gray-500 text-sm">Ваш личный кабинет</p>
+        </div>
+
+        <!-- Profile Card -->
+        <div class="card rounded-xl shadow-sm p-5 mb-6 slide-up">
+            <h2 class="text-lg font-semibold mb-3">Профиль</h2>
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-500">Баланс:</span>
+                <span id="user-balance" class="font-bold text-lg">0 ₽</span>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-500">Подписка:</span>
+                <span id="user-subscription" class="font-medium">Нет активной</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-500">Рефералов:</span>
+                <span id="user-referrals" class="font-medium">0</span>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="grid grid-cols-2 gap-4 mb-6 slide-up" style="animation-delay: 0.1s;">
+            <button id="btn-topup" class="button rounded-lg py-3 px-4 font-semibold text-center hover:opacity-90 transition">
+                Пополнить
+            </button>
+            <button id="btn-buy" class="button-secondary rounded-lg py-3 px-4 font-semibold text-center hover:opacity-90 transition border">
+                Купить VPN
+            </button>
+        </div>
+
+        <!-- Sections Container -->
+        <div id="section-container" class="relative">
+
+            <!-- Default Home View -->
+            <div id="view-home" class="fade-in">
+                <!-- User Configs List -->
+                <h3 class="font-semibold text-lg mb-3">Ваши конфиги</h3>
+                <div id="configs-list" class="space-y-3">
+                    <p class="text-gray-500 text-sm text-center py-4">У вас пока нет конфигов.</p>
+                </div>
+            </div>
+
+            <!-- Buy VPN View -->
+            <div id="view-buy" class="hidden fade-in">
+                <div class="flex items-center mb-4">
+                    <button id="btn-back-buy" class="mr-2 text-blue-500">← Назад</button>
+                    <h3 class="font-semibold text-lg">Выбор подписки</h3>
+                </div>
+                <div id="subscription-options" class="space-y-3">
+                    <!-- Options populated by JS -->
+                </div>
+            </div>
+
+            <!-- Topup View -->
+            <div id="view-topup" class="hidden fade-in">
+                <div class="flex items-center mb-4">
+                    <button id="btn-back-topup" class="mr-2 text-blue-500">← Назад</button>
+                    <h3 class="font-semibold text-lg">Пополнение баланса</h3>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="topup-amount">
+                        Сумма (₽)
+                    </label>
+                    <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="topup-amount" type="number" placeholder="50" min="50">
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button class="topup-preset bg-gray-200 hover:bg-gray-300 rounded py-2 text-sm" data-amount="100">100 ₽</button>
+                    <button class="topup-preset bg-gray-200 hover:bg-gray-300 rounded py-2 text-sm" data-amount="500">500 ₽</button>
+                    <button class="topup-preset bg-gray-200 hover:bg-gray-300 rounded py-2 text-sm" data-amount="1000">1000 ₽</button>
+                </div>
+
+                <button id="btn-pay" class="button w-full rounded-lg py-3 font-bold hover:opacity-90 transition">
+                    Оплатить
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg hidden transition-opacity duration-300 z-50">
+        <span id="toast-message"></span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
