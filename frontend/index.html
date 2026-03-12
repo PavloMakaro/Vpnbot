@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot - Личный кабинет</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary:active {
+            opacity: 0.8;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--tg-theme-button-color, #3390ec);
+            border: 1px solid var(--tg-theme-button-color, #3390ec);
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        .config-item {
+            border-left: 4px solid var(--tg-theme-button-color, #3390ec);
+            padding-left: 12px;
+            margin-bottom: 12px;
+            word-break: break-all;
+        }
+
+        .loader {
+            border: 4px solid rgba(0,0,0,0.1);
+            border-top: 4px solid var(--tg-theme-button-color, #3390ec);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .slide-up {
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        #loading-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .section-title {
+            color: var(--tg-theme-hint-color, #999999);
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            margin-left: 4px;
+        }
+    </style>
+</head>
+<body class="p-4">
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader"></div>
+        <p class="mt-4 text-[var(--tg-theme-hint-color)]">Подключение к VPN Bot...</p>
+    </div>
+
+    <!-- Main Content App Container -->
+    <div id="app" class="hidden pb-12">
+        <!-- Profile Header -->
+        <div class="flex items-center mb-6 slide-up">
+            <div id="user-avatar" class="w-12 h-12 rounded-full bg-[var(--tg-theme-button-color)] flex items-center justify-center text-white font-bold text-xl mr-4">
+                U
+            </div>
+            <div>
+                <h1 id="user-name" class="text-xl font-bold">Загрузка...</h1>
+                <p id="user-username" class="text-sm text-[var(--tg-theme-hint-color)]">@username</p>
+            </div>
+        </div>
+
+        <!-- Status Card -->
+        <div class="card slide-up" style="animation-delay: 0.1s;">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <p class="text-sm text-[var(--tg-theme-hint-color)]">Ваш баланс</p>
+                    <p id="user-balance" class="text-2xl font-bold">0 ₽</p>
+                </div>
+                <button onclick="showTopupModal()" class="btn-primary text-sm px-4 py-2 w-auto">Пополнить</button>
+            </div>
+
+            <div class="border-t border-[var(--tg-theme-hint-color)] opacity-20 my-3"></div>
+
+            <div>
+                <p class="text-sm text-[var(--tg-theme-hint-color)]">Статус подписки</p>
+                <div class="flex items-center mt-1">
+                    <span id="sub-status-icon" class="mr-2">❓</span>
+                    <p id="user-sub-status" class="font-medium">Загрузка статуса...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="mb-6 slide-up" style="animation-delay: 0.2s;">
+            <div class="section-title">Действия</div>
+            <button onclick="showBuyModal()" class="btn-primary mb-3 shadow-md shadow-blue-500/20">🚀 Купить / Продлить VPN</button>
+            <button onclick="showConfigsModal()" class="btn-secondary">🔐 Мои конфиги</button>
+        </div>
+
+        <!-- Referral Info -->
+        <div class="card slide-up" style="animation-delay: 0.3s;">
+            <div class="section-title mb-2 !ml-0">Реферальная программа</div>
+            <p class="text-sm mb-3">Приглашайте друзей и получайте <span class="font-bold">50 ₽</span> на баланс за каждого активного пользователя!</p>
+            <div class="bg-[var(--tg-theme-bg-color)] p-2 rounded flex justify-between items-center text-sm border border-[var(--tg-theme-hint-color)] border-opacity-30">
+                <span id="ref-link" class="truncate mr-2 text-[var(--tg-theme-hint-color)]">Загрузка ссылки...</span>
+                <button onclick="copyRefLink()" class="text-[var(--tg-theme-button-color)] font-medium px-2">Копировать</button>
+            </div>
+            <p class="text-xs text-[var(--tg-theme-hint-color)] mt-2">Приглашено рефералов: <span id="ref-count" class="font-bold">0</span></p>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Buy Subscription Modal -->
+    <div id="buy-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex flex-col justify-end fade-in">
+        <div class="bg-[var(--tg-theme-bg-color)] rounded-t-2xl p-4 pb-8 max-h-[85vh] overflow-y-auto slide-up">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Покупка подписки</h2>
+                <button onclick="hideModal('buy-modal')" class="text-[var(--tg-theme-hint-color)] text-2xl leading-none">&times;</button>
+            </div>
+
+            <p class="text-sm mb-4">Текущий баланс: <span id="modal-balance" class="font-bold">0 ₽</span></p>
+
+            <div id="periods-container" class="space-y-3">
+                <!-- Periods loaded dynamically -->
+                <div class="text-center py-4"><div class="loader w-6 h-6 border-2"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Topup Modal -->
+    <div id="topup-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex flex-col justify-end fade-in">
+        <div class="bg-[var(--tg-theme-bg-color)] rounded-t-2xl p-4 pb-8 slide-up">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Пополнение баланса</h2>
+                <button onclick="hideModal('topup-modal')" class="text-[var(--tg-theme-hint-color)] text-2xl leading-none">&times;</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button onclick="setTopupAmount(100)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">100 ₽</button>
+                <button onclick="setTopupAmount(200)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">200 ₽</button>
+                <button onclick="setTopupAmount(500)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">500 ₽</button>
+                <button onclick="setTopupAmount(1000)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">1000 ₽</button>
+                <button onclick="setTopupAmount(2000)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">2000 ₽</button>
+                <button onclick="setTopupAmount(5000)" class="card text-center !mb-0 !p-3 active:bg-[var(--tg-theme-button-color)] active:text-white transition-colors">5000 ₽</button>
+            </div>
+
+            <div class="mb-4">
+                <label class="text-sm text-[var(--tg-theme-hint-color)] mb-1 block">Или введите другую сумму (₽)</label>
+                <input type="number" id="custom-amount" class="w-full bg-[var(--tg-theme-secondary-bg-color)] text-[var(--tg-theme-text-color)] border border-[var(--tg-theme-hint-color)] border-opacity-20 rounded-lg p-3 outline-none focus:border-[var(--tg-theme-button-color)] transition-colors" placeholder="Например: 1500" min="50">
+            </div>
+
+            <button id="pay-btn" onclick="processTopup()" class="btn-primary">Оплатить через ЮKassa</button>
+        </div>
+    </div>
+
+    <!-- Configs Modal -->
+    <div id="configs-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex flex-col justify-end fade-in">
+        <div class="bg-[var(--tg-theme-bg-color)] rounded-t-2xl p-4 pb-8 max-h-[85vh] overflow-y-auto slide-up">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Мои конфиги</h2>
+                <button onclick="hideModal('configs-modal')" class="text-[var(--tg-theme-hint-color)] text-2xl leading-none">&times;</button>
+            </div>
+
+            <div id="configs-list">
+                <!-- Configs loaded dynamically -->
+                <div class="text-center py-4"><div class="loader w-6 h-6 border-2"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-4 left-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg transform -translate-y-20 transition-transform duration-300 z-[100] flex items-center">
+        <span id="toast-icon" class="mr-2 text-xl">✅</span>
+        <span id="toast-msg" class="text-sm font-medium">Успешно!</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
