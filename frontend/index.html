@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Mini App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/realm-web/dist/bundle.iife.js"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .slide-up {
+            animation: slideUp 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4">
+
+    <div id="loading" class="text-center mt-20 fade-in">
+        <h2 class="text-xl font-bold">Loading...</h2>
+        <p class="text-gray-500">Authenticating with Telegram...</p>
+    </div>
+
+    <div id="main-content" class="hidden slide-up max-w-md mx-auto">
+        <header class="mb-6 flex justify-between items-center bg-white p-4 rounded-lg shadow">
+            <div>
+                <h1 class="text-2xl font-bold text-blue-600">VPN Manager</h1>
+                <p id="user-greeting" class="text-gray-600"></p>
+            </div>
+            <div class="text-right">
+                <p class="text-sm text-gray-500">Balance</p>
+                <p id="user-balance" class="font-bold text-lg">0 ₽</p>
+            </div>
+        </header>
+
+        <section id="status-section" class="mb-6 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-bold mb-2">Subscription Status</h2>
+            <p id="sub-status">Checking...</p>
+        </section>
+
+        <section id="buy-section" class="mb-6 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-bold mb-4">Buy Subscription</h2>
+            <div id="plans-container" class="space-y-3">
+                <!-- Plans dynamically loaded here -->
+            </div>
+        </section>
+
+        <section id="topup-section" class="mb-6 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-xl font-bold mb-4">Top Up Balance</h2>
+            <div class="flex space-x-2">
+                <input type="number" id="topup-amount" placeholder="Amount (RUB)" class="border p-2 rounded w-full">
+                <button id="topup-btn" class="bg-green-500 text-white px-4 py-2 rounded font-bold hover:bg-green-600">Top Up</button>
+            </div>
+        </section>
+
+        <section id="configs-section" class="bg-white p-4 rounded-lg shadow hidden">
+            <h2 class="text-xl font-bold mb-4">My Configs</h2>
+            <ul id="configs-list" class="space-y-2">
+                <!-- Configs listed here -->
+            </ul>
+        </section>
+
+        <div id="message-container" class="mt-4 text-center font-bold"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
