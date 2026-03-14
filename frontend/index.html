@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot - Mini App</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+    <!-- Telegram WebApp JS -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .slide-up {
+            animation: slideUp 0.3s ease-in-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Telegram Theme Colors (fallback to defaults if not running in TG) */
+        :root {
+            --tg-theme-bg-color: #ffffff;
+            --tg-theme-text-color: #000000;
+            --tg-theme-hint-color: #999999;
+            --tg-theme-link-color: #2481cc;
+            --tg-theme-button-color: #2481cc;
+            --tg-theme-button-text-color: #ffffff;
+            --tg-theme-secondary-bg-color: #f0f0f0;
+        }
+
+        body {
+            background-color: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+        }
+
+        .btn-primary {
+            background-color: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+        }
+        .text-hint {
+            color: var(--tg-theme-hint-color);
+        }
+        .bg-secondary {
+            background-color: var(--tg-theme-secondary-bg-color);
+        }
+    </style>
+</head>
+<body class="font-sans antialiased max-w-md mx-auto h-screen flex flex-col">
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-white bg-opacity-90 z-50 flex items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="p-4 border-b border-gray-200 bg-secondary shadow-sm">
+        <h1 class="text-xl font-bold text-center">VPN Bot</h1>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow p-4 overflow-y-auto" id="app-content">
+        <!-- Views will be injected here -->
+    </main>
+
+    <!-- Navigation (Footer) -->
+    <nav class="flex border-t border-gray-200 bg-secondary pb-safe">
+        <button onclick="app.showView('profile')" class="flex-1 py-3 text-center hover:bg-gray-200 transition">
+            <span class="block text-2xl">👤</span>
+            <span class="text-xs">Profile</span>
+        </button>
+        <button onclick="app.showView('buy')" class="flex-1 py-3 text-center hover:bg-gray-200 transition">
+            <span class="block text-2xl">🚀</span>
+            <span class="text-xs">Buy VPN</span>
+        </button>
+        <button onclick="app.showView('configs')" class="flex-1 py-3 text-center hover:bg-gray-200 transition">
+            <span class="block text-2xl">🔐</span>
+            <span class="text-xs">Configs</span>
+        </button>
+    </nav>
+
+    <!-- Templates -->
+    <template id="tpl-profile">
+        <div class="fade-in space-y-4">
+            <div class="bg-white p-4 rounded-lg shadow border border-gray-100">
+                <h2 class="text-lg font-bold mb-2">👤 Personal Info</h2>
+                <p><span class="text-hint">Name:</span> <span id="p-name" class="font-medium">...</span></p>
+                <p><span class="text-hint">Username:</span> @<span id="p-username" class="font-medium">...</span></p>
+                <p><span class="text-hint">ID:</span> <span id="p-id" class="font-medium">...</span></p>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow border border-gray-100">
+                <h2 class="text-lg font-bold mb-2">💰 Finance</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <p class="text-sm text-hint">Balance</p>
+                        <p class="text-2xl font-bold"><span id="p-balance">0</span> ₽</p>
+                    </div>
+                    <button onclick="app.showTopUpModal()" class="btn-primary px-4 py-2 rounded-lg font-medium shadow-sm active:scale-95 transition">
+                        Top Up
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow border border-gray-100">
+                <h2 class="text-lg font-bold mb-2">📅 Subscription</h2>
+                <p id="p-sub-status" class="font-medium text-lg mb-1">Checking...</p>
+                <p id="p-sub-end" class="text-sm text-hint"></p>
+            </div>
+        </div>
+    </template>
+
+    <template id="tpl-buy">
+        <div class="fade-in space-y-4">
+            <h2 class="text-xl font-bold mb-2">Select Subscription</h2>
+            <div id="plans-container" class="space-y-3">
+                <!-- Plans injected here -->
+            </div>
+        </div>
+    </template>
+
+    <template id="tpl-configs">
+        <div class="fade-in space-y-4">
+            <h2 class="text-xl font-bold mb-2">Your Configs</h2>
+            <div id="configs-container" class="space-y-3">
+                <!-- Configs injected here -->
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal for Top Up -->
+    <div id="modal-topup" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center fade-in">
+        <div class="bg-white w-11/12 max-w-sm rounded-xl p-5 slide-up">
+            <h3 class="text-lg font-bold mb-4">Top Up Balance</h3>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button onclick="app.setTopUpAmount(100)" class="border rounded p-2 text-center hover:bg-gray-100">100₽</button>
+                <button onclick="app.setTopUpAmount(200)" class="border rounded p-2 text-center hover:bg-gray-100">200₽</button>
+                <button onclick="app.setTopUpAmount(500)" class="border rounded p-2 text-center hover:bg-gray-100">500₽</button>
+                <button onclick="app.setTopUpAmount(1000)" class="border rounded p-2 text-center hover:bg-gray-100">1000₽</button>
+                <button onclick="app.setTopUpAmount(2000)" class="border rounded p-2 text-center hover:bg-gray-100">2000₽</button>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm text-hint mb-1">Custom Amount</label>
+                <input type="number" id="custom-amount" class="w-full border rounded p-2" placeholder="e.g. 150">
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button onclick="app.closeModal('modal-topup')" class="px-4 py-2 rounded bg-gray-200 text-gray-800">Cancel</button>
+                <button onclick="app.processTopUp()" class="btn-primary px-4 py-2 rounded">Pay</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
