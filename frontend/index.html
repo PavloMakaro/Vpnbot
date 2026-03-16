@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        .slide-up { animation: slideUp 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans p-4">
+
+    <div id="loading" class="flex justify-center items-center h-screen fade-in">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+    </div>
+
+    <div id="app" class="hidden slide-up max-w-md mx-auto space-y-6">
+        <!-- Header / Profile -->
+        <div class="bg-white p-6 rounded-xl shadow-md text-center">
+            <h1 class="text-2xl font-bold mb-2">My Profile</h1>
+            <p class="text-gray-600">Balance: <span id="balanceDisplay" class="font-bold text-green-600">...</span> ₽</p>
+            <p id="subStatus" class="text-sm mt-1 text-gray-500">Subscription Status: ...</p>
+        </div>
+
+        <!-- Buy Subscription -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2">Buy Subscription</h2>
+            <div id="configsList" class="space-y-3">
+                <!-- Config options will be injected here -->
+                <p class="text-sm text-gray-500 text-center">Loading options...</p>
+            </div>
+        </div>
+
+        <!-- Top up Balance -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2">Top up Balance</h2>
+            <div class="flex space-x-2">
+                <input type="number" id="topupAmount" placeholder="Amount (RUB)" class="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <button id="topupBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200">Pay</button>
+            </div>
+            <p id="topupMsg" class="text-sm mt-2 hidden text-red-500"></p>
+        </div>
+
+        <!-- My Configs -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2">My Configs</h2>
+            <div id="myConfigsList" class="space-y-3">
+                <p class="text-sm text-gray-500 text-center">No configs found.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const APP_ID = "YOUR_REALM_APP_ID"; // Replace with your actual App ID
+        const app = new Realm.App({ id: APP_ID });
+
+        // Elements
+        const elLoading = document.getElementById('loading');
+        const elApp = document.getElementById('app');
+        const elBalance = document.getElementById('balanceDisplay');
+        const elSubStatus = document.getElementById('subStatus');
+        const elConfigsList = document.getElementById('configsList');
+        const elMyConfigsList = document.getElementById('myConfigsList');
+        const elTopupBtn = document.getElementById('topupBtn');
+        const elTopupAmount = document.getElementById('topupAmount');
+        const elTopupMsg = document.getElementById('topupMsg');
+
+        // Main App State
+        let currentUserProfile = null;
+
+        async function init() {
+            try {
+                // 1. Authenticate via Telegram
+                const tg = window.Telegram.WebApp;
+                tg.ready();
+                const initData = tg.initData || "MOCK_INIT_DATA"; // Fallback for local testing if needed, but production needs real initData
+
+                // Set theme colors if available
+                if (tg.themeParams && tg.themeParams.bg_color) {
+                   document.body.style.backgroundColor = tg.themeParams.bg_color;
+                   document.body.style.color = tg.themeParams.text_color;
+                }
+
+                // Custom Function Auth
+                const credentials = Realm.Credentials.function({ initData });
+                const user = await app.logIn(credentials);
+
+                // 2. Check pending payments right away
+                await user.functions.checkPendingPayments();
+
+                // 3. Load Profile Data
+                await loadProfileData(user);
+
+                // 4. Load Subscription Options
+                await loadSubscriptionOptions(user);
+
+                // 5. Show App
+                elLoading.classList.add('hidden');
+                elApp.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                elLoading.innerHTML = `<p class="text-red-500 font-bold p-4 text-center">Failed to load: ${error.message}</p>`;
+            }
+        }
+
+        async function loadProfileData(user) {
+            try {
+                const profile = await user.functions.getProfile();
+                currentUserProfile = profile;
+
+                elBalance.textContent = profile.balance;
+
+                if (profile.subscription_end) {
+                    const endDate = new Date(profile.subscription_end);
+                    if (endDate > new Date()) {
+                         elSubStatus.textContent = `Active until: ${endDate.toLocaleDateString()}`;
+                         elSubStatus.classList.add("text-green-600");
+                         elSubStatus.classList.remove("text-red-600", "text-gray-500");
+                    } else {
+                         elSubStatus.textContent = `Expired on: ${endDate.toLocaleDateString()}`;
+                         elSubStatus.classList.add("text-red-600");
+                         elSubStatus.classList.remove("text-green-600", "text-gray-500");
+                    }
+                } else {
+                    elSubStatus.textContent = "No active subscription";
+                }
+
+                renderMyConfigs(profile.used_configs || []);
+            } catch (e) {
+                console.error("Failed to load profile", e);
+            }
+        }
+
+        async function loadSubscriptionOptions(user) {
+            try {
+                const configs = await user.functions.getConfigs();
+                elConfigsList.innerHTML = '';
+
+                for (const [period, data] of Object.entries(configs)) {
+                    const btn = document.createElement('button');
+                    btn.className = "w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg p-4 text-left flex justify-between items-center transition duration-150";
+                    btn.innerHTML = `
+                        <div>
+                            <span class="font-bold text-lg block">${data.days} Days</span>
+                            <span class="text-gray-500 text-sm">Best value</span>
+                        </div>
+                        <span class="font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">${data.price} ₽</span>
+                    `;
+
+                    btn.onclick = () => buySubscription(user, period, data.price);
+                    elConfigsList.appendChild(btn);
+                }
+            } catch (e) {
+                elConfigsList.innerHTML = `<p class="text-red-500 text-sm">Failed to load options.</p>`;
+            }
+        }
+
+        function renderMyConfigs(configs) {
+            if (!configs || configs.length === 0) {
+                elMyConfigsList.innerHTML = `<p class="text-sm text-gray-500 text-center">No configs found. Buy a subscription!</p>`;
+                return;
+            }
+
+            elMyConfigsList.innerHTML = configs.map(c => `
+                <div class="border rounded-lg p-3 bg-gray-50">
+                    <p class="font-bold text-sm mb-1">${c.config_name} <span class="text-xs font-normal text-gray-500">(${c.period})</span></p>
+                    <code class="block bg-gray-200 p-2 rounded text-xs break-all mt-2 select-all">${c.config_link}</code>
+                </div>
+            `).reverse().join('');
+        }
+
+        async function buySubscription(user, period, price) {
+            if (!confirm(`Buy ${period} subscription for ${price} ₽?`)) return;
+
+            try {
+                // Show loading on list
+                const originalHtml = elConfigsList.innerHTML;
+                elConfigsList.innerHTML = `<div class="flex justify-center p-4"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div></div>`;
+
+                const result = await user.functions.buySubscription(period);
+
+                if (result.success) {
+                    alert("Subscription purchased successfully!");
+                    await loadProfileData(user); // Reload profile
+                }
+
+                await loadSubscriptionOptions(user); // Restore options
+            } catch (e) {
+                alert(`Error: ${e.message}`);
+                await loadSubscriptionOptions(user); // Restore options
+            }
+        }
+
+        // Top up handling
+        elTopupBtn.addEventListener('click', async () => {
+            const amount = parseInt(elTopupAmount.value);
+            if (!amount || amount < 50) {
+                elTopupMsg.textContent = "Minimum amount is 50 ₽";
+                elTopupMsg.classList.remove('hidden');
+                return;
+            }
+
+            elTopupMsg.classList.add('hidden');
+            elTopupBtn.disabled = true;
+            elTopupBtn.innerHTML = "Processing...";
+
+            try {
+                const user = app.currentUser;
+                // createPayment returns the YooKassa payment object
+                const payment = await user.functions.createPayment(amount, `Top up balance: ${amount} RUB`);
+
+                if (payment && payment.confirmation && payment.confirmation.confirmation_url) {
+                     // Redirect user to payment page
+                     window.location.href = payment.confirmation.confirmation_url;
+                } else {
+                     throw new Error("Invalid payment response from provider.");
+                }
+
+            } catch (e) {
+                elTopupMsg.textContent = `Error: ${e.message}`;
+                elTopupMsg.classList.remove('hidden');
+                elTopupBtn.disabled = false;
+                elTopupBtn.innerHTML = "Pay";
+            }
+        });
+
+        // Run
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
