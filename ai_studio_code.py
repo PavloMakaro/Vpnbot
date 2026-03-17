@@ -4,6 +4,7 @@ import json
 import time
 import datetime
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import os
 import subprocess
 import signal
@@ -324,15 +325,22 @@ def create_backup_zip():
     try:
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         backups_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups')
-        if not os.path.exists(backups_dir):
-            os.makedirs(backups_dir)
+
+        try:
+            os.makedirs(backups_dir, exist_ok=True)
+        except OSError:
+            pass
+
         backup_path = os.path.join(backups_dir, f'backup_{timestamp}.zip')
 
         files_to_backup = []
         for fname in ['users.json', 'configs.json', 'payments.json']:
             fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
-            if os.path.exists(fpath):
+            try:
+                os.stat(fpath)
                 files_to_backup.append(fpath)
+            except OSError:
+                continue
 
         # Если данных нет, всё равно создаём пустой архив для последовательности
         with zipfile.ZipFile(backup_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -1391,30 +1399,46 @@ def process_custom_topup(message):
                         reply_markup=topup_balance_keyboard())
 
 # === ПРОВЕРКА СТАТУСА ПЛАТЕЖЕЙ ===
+def _check_single_payment(payment_id, payment_data):
+    try:
+        payment = Payment.find_one(payment_id)
+        return payment_id, payment_data, payment.status
+    except Exception as e:
+        print(f"Ошибка проверки платежа {payment_id}: {e}")
+        return payment_id, payment_data, None
+
 def check_pending_payments():
     """Проверка статуса ожидающих платежей"""
     try:
-        for payment_id, payment_data in payments_db.items():
-            if payment_data.get('status') == 'pending' and payment_data.get('method') == 'yookassa_smart':
-                try:
-                    # Получаем информацию о платеже из ЮKassa
-                    payment = Payment.find_one(payment_id)
+        pending_payments = [(pid, pdata) for pid, pdata in payments_db.items()
+                            if pdata.get('status') == 'pending' and pdata.get('method') == 'yookassa_smart']
+
+        if not pending_payments:
+            return
+
+        users_updated = False
+        payments_updated = False
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(_check_single_payment, pid, pdata) for pid, pdata in pending_payments]
+
+            for future in futures:
+                payment_id, payment_data, status = future.result()
+                if not status:
+                    continue
+
+                if status == 'succeeded':
+                    user_id = payment_data['user_id']
+                    amount = payment_data['amount']
                     
-                    if payment.status == 'succeeded':
-                        # Платеж успешен - пополняем баланс
-                        user_id = payment_data['user_id']
-                        amount = payment_data['amount']
-                        
-                        # Обновляем баланс
+                    if user_id in users_db:
                         current_balance = users_db.get(user_id, {}).get('balance', 0)
                         users_db[user_id]['balance'] = current_balance + amount
-                        save_data('users.json', users_db)
+                        users_updated = True
                         
-                        # Обновляем статус платежа
                         payments_db[payment_id]['status'] = 'confirmed'
-                        save_data('payments.json', payments_db)
+                        payments_updated = True
                         
-                        # Уведомляем пользователя
                         bot.send_message(
                             user_id,
                             f"✅ **Баланс успешно пополнен!**\n\n"
@@ -1425,27 +1449,29 @@ def check_pending_payments():
                             reply_markup=main_menu_keyboard(user_id)
                         )
 
-                        # Уведомляем админа
                         bot.send_message(
                             ADMIN_ID,
                             f"✅ Пополнение баланса через ЮKassa:\n"
                             f"Пользователь: @{users_db[user_id].get('username', 'N/A')} (ID: {user_id})\n"
                             f"Сумма: {amount} ₽"
                         )
-                        
-                    elif payment.status == 'canceled':
-                        # Платеж отменен
-                        payments_db[payment_id]['status'] = 'canceled'
-                        save_data('payments.json', payments_db)
-                        
-                        bot.send_message(
-                            payment_data['user_id'],
-                            f"❌ Платеж отменен. Баланс не пополнен.",
-                            reply_markup=main_menu_keyboard(payment_data['user_id'])
-                        )
-                        
-                except Exception as e:
-                    print(f"Ошибка проверки платежа {payment_id}: {e}")
+                    else:
+                        print(f"Пользователь {user_id} не найден для платежа {payment_id}")
+
+                elif status == 'canceled':
+                    payments_db[payment_id]['status'] = 'canceled'
+                    payments_updated = True
+
+                    bot.send_message(
+                        payment_data['user_id'],
+                        f"❌ Платеж отменен. Баланс не пополнен.",
+                        reply_markup=main_menu_keyboard(payment_data['user_id'])
+                    )
+
+        if users_updated:
+            save_data('users.json', users_db)
+        if payments_updated:
+            save_data('payments.json', payments_db)
                     
     except Exception as e:
         print(f"Ошибка проверки платежей: {e}")
