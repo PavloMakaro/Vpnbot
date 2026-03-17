@@ -1,0 +1,15 @@
+# Compiled Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node modules
+node_modules/
+
+# Legacy Data files (if preferred to ignore)
+# users.json
+# configs.json
+# payments.json
+
+# Environment variables
+.env
