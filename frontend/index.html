@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VPN Mini App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Realm Web SDK -->
+  <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+  <!-- Telegram Web App Script -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    /* CSS animations */
+    .fade-in {
+      animation: fadeIn 0.4s ease-in-out;
+    }
+
+    .slide-up {
+      animation: slideUp 0.4s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Base telegram theme styles */
+    body {
+      background-color: var(--tg-theme-bg-color, #ffffff);
+      color: var(--tg-theme-text-color, #000000);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .card {
+      background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    }
+
+    .btn-primary {
+      background-color: var(--tg-theme-button-color, #3390ec);
+      color: var(--tg-theme-button-text-color, #ffffff);
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 pb-20 fade-in">
+
+  <div id="loading" class="flex flex-col items-center justify-center min-h-[60vh]">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+    <p class="text-gray-500">Loading your profile...</p>
+  </div>
+
+  <div id="error-state" class="hidden flex-col items-center justify-center min-h-[60vh] text-center">
+    <div class="text-red-500 text-5xl mb-4">⚠️</div>
+    <h2 class="text-xl font-bold mb-2">Something went wrong</h2>
+    <p id="error-message" class="text-sm opacity-80 mb-6"></p>
+    <button onclick="window.location.reload()" class="btn-primary px-6 py-2 rounded-lg font-medium">Try Again</button>
+  </div>
+
+  <div id="main-content" class="hidden max-w-md mx-auto space-y-6">
+
+    <!-- Profile Card -->
+    <div class="card rounded-2xl p-5 shadow-sm slide-up" style="animation-delay: 0.1s;">
+      <div class="flex items-center space-x-4 mb-4">
+        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold" id="user-avatar">
+          ?
+        </div>
+        <div>
+          <h2 class="text-lg font-bold" id="user-name">Loading...</h2>
+          <p class="text-sm opacity-70" id="user-handle">@loading</p>
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center p-3 bg-white/50 rounded-xl mt-4">
+        <div>
+          <p class="text-xs opacity-70 uppercase tracking-wider font-semibold">Balance</p>
+          <p class="text-xl font-bold"><span id="user-balance">0</span> ₽</p>
+        </div>
+        <button id="topup-btn" class="btn-primary text-sm px-4 py-2 rounded-lg font-medium shadow-sm active:scale-95 transition-transform">
+          Top Up
+        </button>
+      </div>
+
+      <div class="mt-4 p-3 bg-white/50 rounded-xl flex justify-between items-center">
+        <div>
+          <p class="text-xs opacity-70 uppercase tracking-wider font-semibold">Subscription</p>
+          <p class="text-sm font-medium mt-1" id="sub-status">Checking...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Configs -->
+    <div class="slide-up" style="animation-delay: 0.2s;">
+      <h3 class="font-bold mb-3 px-1 text-lg">My Configs</h3>
+      <div id="configs-list" class="space-y-3">
+        <p class="text-sm opacity-70 text-center py-4 italic">No configs issued yet.</p>
+      </div>
+    </div>
+
+    <!-- Buy Subscription -->
+    <div class="slide-up" style="animation-delay: 0.3s;">
+      <h3 class="font-bold mb-3 px-1 text-lg">Buy Subscription</h3>
+      <div id="plans-list" class="space-y-3">
+        <!-- Plans will be injected here -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Top Up Modal -->
+  <div id="topup-modal" class="fixed inset-0 bg-black/50 hidden items-end sm:items-center justify-center z-50 fade-in">
+    <div class="card w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 slide-up shadow-xl mb-0 sm:mb-auto">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-xl font-bold">Top Up Balance</h3>
+        <button id="close-topup" class="p-2 rounded-full bg-black/5 active:bg-black/10">✕</button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="100">100 ₽</button>
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="200">200 ₽</button>
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="500">500 ₽</button>
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="1000">1000 ₽</button>
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="2000">2000 ₽</button>
+        <button class="amount-btn py-3 rounded-xl bg-white/50 border border-black/10 font-bold active:bg-blue-50 transition-colors" data-amount="5000">5000 ₽</button>
+      </div>
+
+      <div class="mb-6">
+        <label class="block text-sm font-medium opacity-70 mb-2">Custom Amount (₽)</label>
+        <input type="number" id="custom-amount" placeholder="Enter amount..." class="w-full px-4 py-3 rounded-xl border border-black/10 bg-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500" min="50">
+      </div>
+
+      <button id="confirm-topup" class="btn-primary w-full py-4 rounded-xl font-bold text-lg shadow-md active:scale-95 transition-transform disabled:opacity-50">
+        Pay via Yookassa
+      </button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
