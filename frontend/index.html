@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VPN Bot</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Telegram WebApp -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+    <style>
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            padding: 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f3f4f6);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .btn {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            font-weight: 500;
+            width: 100%;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-align: center;
+            display: inline-block;
+            box-sizing: border-box;
+        }
+
+        .btn:active {
+            opacity: 0.8;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background-color: var(--tg-theme-secondary-bg-color, #f3f4f6);
+            color: var(--tg-theme-text-color, #000000);
+            border: 1px solid var(--tg-theme-hint-color, #999999);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .text-hint {
+            color: var(--tg-theme-hint-color, #999999);
+        }
+
+        .text-link {
+            color: var(--tg-theme-link-color, #3390ec);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: var(--tg-theme-button-color, #3390ec);
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Initial Loading State -->
+        <div id="loadingView" class="loading-container fade-in">
+            <div class="spinner mb-4"></div>
+            <p class="text-hint text-sm">Загрузка данных...</p>
+        </div>
+
+        <!-- Main Dashboard View -->
+        <div id="dashboardView" class="hidden fade-in">
+            <div class="card slide-up" style="animation-delay: 0.1s;">
+                <h2 class="text-xl font-bold mb-2">Профиль</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-hint">Имя:</span>
+                    <span id="userName" class="font-medium">-</span>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-hint">Баланс:</span>
+                    <span class="font-bold text-lg"><span id="userBalance">0</span> ₽</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-hint">Подписка до:</span>
+                    <span id="userSubEnd" class="font-medium">-</span>
+                </div>
+            </div>
+
+            <!-- Active Configs -->
+            <div id="activeConfigsSection" class="card slide-up hidden" style="animation-delay: 0.2s;">
+                <h3 class="text-lg font-bold mb-3">Ваши конфиги</h3>
+                <div id="configsList" class="space-y-3">
+                    <!-- Configs injected here via JS -->
+                </div>
+            </div>
+
+            <div class="slide-up" style="animation-delay: 0.3s;">
+                <button id="btnBuyVpn" class="btn mb-3">Продлить/Купить VPN 🚀</button>
+                <button id="btnTopup" class="btn btn-secondary">Пополнить баланс 💳</button>
+            </div>
+        </div>
+
+        <!-- Buy Subscription View -->
+        <div id="buyView" class="hidden fade-in">
+            <button id="btnBackFromBuy" class="text-link mb-4 text-sm flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Назад
+            </button>
+
+            <h2 class="text-xl font-bold mb-4">Выберите период</h2>
+
+            <div id="loadingConfigsView" class="loading-container hidden">
+                 <div class="spinner"></div>
+            </div>
+
+            <div id="subscriptionOptions" class="space-y-3">
+                <!-- Options injected via JS -->
+            </div>
+        </div>
+
+        <!-- Topup Balance View -->
+        <div id="topupView" class="hidden fade-in">
+            <button id="btnBackFromTopup" class="text-link mb-4 text-sm flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Назад
+            </button>
+
+            <h2 class="text-xl font-bold mb-4">Пополнение баланса</h2>
+
+            <div class="card">
+                <p class="text-hint text-sm mb-3">Текущий баланс: <span id="topupCurrentBalance" class="font-bold text-black">0</span> ₽</p>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button class="amount-btn btn btn-secondary py-2" data-amount="100">100 ₽</button>
+                    <button class="amount-btn btn btn-secondary py-2" data-amount="200">200 ₽</button>
+                    <button class="amount-btn btn btn-secondary py-2" data-amount="500">500 ₽</button>
+                    <button class="amount-btn btn btn-secondary py-2" data-amount="1000">1000 ₽</button>
+                    <button class="amount-btn btn btn-secondary py-2" data-amount="2000">2000 ₽</button>
+                    <button class="amount-btn btn py-2" data-amount="custom">Другая</button>
+                </div>
+
+                <div id="customAmountContainer" class="hidden mb-4">
+                    <input type="number" id="customAmountInput" class="w-full p-2 border rounded border-gray-300 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Сумма (от 50 ₽)">
+                </div>
+
+                <button id="btnProceedTopup" class="btn" disabled>Перейти к оплате</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions Modal (Hidden by default) -->
+    <div id="instructionsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-gray-800 w-11/12 max-w-md rounded-lg shadow-xl p-5 transform scale-95 transition-transform duration-300">
+            <h3 class="text-lg font-bold mb-3 border-b pb-2">Инструкция по настройке</h3>
+            <div class="max-h-60 overflow-y-auto text-sm space-y-3 mb-4 pr-1 text-gray-700 dark:text-gray-300" id="instructionsContent">
+                <!-- Content injected via JS -->
+            </div>
+            <button id="btnCloseInstructions" class="btn w-full">Понятно</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

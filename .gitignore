@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.db
+node_modules/
+server_backup_bot.log
