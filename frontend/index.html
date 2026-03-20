@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Mini App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Realm Web SDK -->
+    <script src="https://unpkg.com/realm-web@2.0.0/dist/bundle.iife.js"></script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        .slide-up { animation: slideUp 0.4s ease-out; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .hidden { display: none !important; }
+
+        body {
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f3f4f6);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .btn-primary {
+            background-color: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary:active { opacity: 0.8; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .config-code {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            word-break: break-all;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body class="antialiased max-w-md mx-auto p-4">
+
+    <!-- Loading Screen -->
+    <div id="loading" class="flex items-center justify-center min-h-[80vh]">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+    </div>
+
+    <!-- Error Screen -->
+    <div id="error-screen" class="hidden min-h-[80vh] flex flex-col items-center justify-center text-center fade-in">
+        <svg class="w-16 h-16 text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <h2 class="text-xl font-bold mb-2">Oops! Something went wrong</h2>
+        <p id="error-message" class="text-gray-500"></p>
+        <button onclick="window.location.reload()" class="btn-primary mt-6 max-w-[200px]">Retry</button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content" class="hidden fade-in">
+
+        <!-- Profile Header -->
+        <div class="flex items-center space-x-4 mb-6">
+            <div id="user-avatar" class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold">
+                <!-- Initials -->
+            </div>
+            <div>
+                <h1 id="user-name" class="text-xl font-bold">Loading...</h1>
+                <p class="text-sm opacity-75" id="user-balance">Balance: 0 ₽</p>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex mb-6 border-b border-gray-200 border-opacity-20">
+            <button onclick="switchTab('store')" id="tab-store" class="flex-1 py-2 font-semibold text-blue-500 border-b-2 border-blue-500">Store</button>
+            <button onclick="switchTab('configs')" id="tab-configs" class="flex-1 py-2 font-semibold opacity-70">My Configs</button>
+        </div>
+
+        <!-- Store Tab -->
+        <div id="store-tab" class="slide-up">
+            <div class="card mb-6">
+                <h2 class="font-bold mb-2">Top up Balance</h2>
+                <div class="flex gap-2 mb-4">
+                    <button onclick="topUp(100)" class="flex-1 py-2 rounded bg-opacity-10 bg-blue-500 text-blue-600 font-medium hover:bg-opacity-20">100₽</button>
+                    <button onclick="topUp(300)" class="flex-1 py-2 rounded bg-opacity-10 bg-blue-500 text-blue-600 font-medium hover:bg-opacity-20">300₽</button>
+                    <button onclick="topUp(500)" class="flex-1 py-2 rounded bg-opacity-10 bg-blue-500 text-blue-600 font-medium hover:bg-opacity-20">500₽</button>
+                </div>
+                <div class="flex gap-2">
+                    <input type="number" id="custom-amount" placeholder="Custom Amount" class="flex-1 px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 text-black">
+                    <button onclick="topUpCustom()" class="btn-primary" style="width: auto;">Top Up</button>
+                </div>
+            </div>
+
+            <h2 class="font-bold mb-4">VPN Subscriptions</h2>
+            <div id="subscriptions-list" class="space-y-4">
+                <!-- Subscriptions will be populated here -->
+                <div class="text-center py-4 text-gray-500">Loading subscriptions...</div>
+            </div>
+        </div>
+
+        <!-- Configs Tab -->
+        <div id="configs-tab" class="hidden slide-up">
+            <div id="active-subscription-banner" class="mb-4 hidden p-4 rounded-lg bg-green-100 text-green-800">
+                <p class="font-semibold">Active Subscription</p>
+                <p class="text-sm" id="sub-expires-text"></p>
+            </div>
+
+            <h2 class="font-bold mb-4">Your Configurations</h2>
+            <div id="configs-list" class="space-y-4">
+                <!-- Configs will be populated here -->
+                <div class="text-center py-8 text-gray-500">You don't have any configs yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Verification Modal -->
+    <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white text-black p-6 rounded-xl max-w-sm w-full m-4">
+            <h3 class="font-bold text-lg mb-2">Processing Payment</h3>
+            <p class="text-sm text-gray-600 mb-4">Waiting for payment confirmation from Yookassa...</p>
+            <div class="flex justify-center mb-4">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+            <p id="payment-status-text" class="text-center text-sm font-medium">Checking...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
