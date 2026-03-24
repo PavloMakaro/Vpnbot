@@ -13,6 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from yookassa import Configuration, Payment
 from fastapi import FastAPI, Request
 from uvicorn import Config, Server
+import sqlite3
 
 # Настройка
 BOT_TOKEN = '8367506028:AAEkOdCm8Lt0ntYzm4_pryrID17XihOXNRw'  # Твой токен
@@ -37,8 +38,48 @@ app = FastAPI()  # Для обработки webhook'ов YooKassa
 class PaymentStates(StatesGroup):
     waiting_for_payment = State()
 
-# Хранилище платежей (временное, для простоты)
-payments = {}
+class PaymentDatabase:
+    def __init__(self, db_path="payments.db"):
+        self.db_path = db_path
+        self.init_db()
+
+    def init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS payments (
+                    payment_id TEXT PRIMARY KEY,
+                    user_id INTEGER,
+                    email TEXT
+                )
+            ''')
+            conn.commit()
+
+    def save_payment(self, payment_id, data):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO payments (payment_id, user_id, email) VALUES (?, ?, ?)",
+                (payment_id, data['user_id'], data['email'])
+            )
+            conn.commit()
+
+    def get_payment(self, payment_id):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, email FROM payments WHERE payment_id = ?", (payment_id,))
+            row = cursor.fetchone()
+            if row:
+                return {'user_id': row[0], 'email': row[1]}
+            return None
+
+    def delete_payment(self, payment_id):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM payments WHERE payment_id = ?", (payment_id,))
+            conn.commit()
+
+payments = PaymentDatabase()
 
 # Логин в 3X-UI
 def get_panel_session():
@@ -113,11 +154,14 @@ async def buy_vpn(callback: types.CallbackQuery, state: FSMContext):
     }, idempotence_key=payment_id)
 
     qr_url = payment.confirmation.confirmation_url
-    payments[payment_id] = {'user_id': callback.from_user.id, 'email': f"user_{callback.from_user.id}_{datetime.now().strftime('%Y%m%d')}"}
+
+    # Store in DB
+    payment_data = {'user_id': callback.from_user.id, 'email': f"user_{callback.from_user.id}_{datetime.now().strftime('%Y%m%d')}"}
+    payments.save_payment(payment.id, payment_data)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='Оплатить по QR', url=qr_url)],
-        [InlineKeyboardButton(text='Проверить оплату', callback_data=f'check_payment_{payment_id}')]
+        [InlineKeyboardButton(text='Проверить оплату', callback_data=f'check_payment_{payment.id}')]
     ])
     await callback.message.answer(f'Оплатите 50₽ по QR-коду:\n{qr_url}', reply_markup=keyboard)
     await state.set_state(PaymentStates.waiting_for_payment)
@@ -126,8 +170,8 @@ async def buy_vpn(callback: types.CallbackQuery, state: FSMContext):
 # Проверка оплаты
 @dp.callback_query(lambda c: c.data.startswith('check_payment_'))
 async def check_payment(callback: types.CallbackQuery, state: FSMContext):
-    payment_id = callback.data.split('_')[-1]
-    payment_info = payments.get(payment_id)
+    payment_id = callback.data.split('_', 2)[-1]
+    payment_info = payments.get_payment(payment_id)
     if not payment_info:
         await callback.message.answer('Ошибка: Платеж не найден.')
         return
@@ -140,7 +184,7 @@ async def check_payment(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.answer(f'Оплата успешна! Ваш VLESS конфиг:\n<code>{config}</code>\nСрок: 1 месяц.', parse_mode='HTML')
         else:
             await callback.message.answer('Ошибка генерации конфига. Обратитесь в поддержку.')
-        del payments[payment_id]
+        payments.delete_payment(payment_id)
         await state.clear()
     else:
         await callback.message.answer('Платеж еще не подтвержден. Попробуйте снова.')
@@ -153,7 +197,7 @@ async def webhook(request: Request):
     payment = event.get('object')
     if payment and payment.get('status') == 'succeeded':
         payment_id = payment.get('id')
-        payment_info = payments.get(payment_id)
+        payment_info = payments.get_payment(payment_id)
         if payment_info:
             email = payment_info['email']
             config = add_vless_client(email)
@@ -163,7 +207,7 @@ async def webhook(request: Request):
                     f'Оплата успешна! Ваш VLESS конфиг:\n<code>{config}</code>\nСрок: 1 месяц.',
                     parse_mode='HTML'
                 )
-            del payments[payment_id]
+            payments.delete_payment(payment_id)
     return {'status': 'ok'}
 
 # Запуск

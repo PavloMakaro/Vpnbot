@@ -12,6 +12,7 @@ import uuid
 import math
 import zipfile
 from yookassa import Configuration, Payment
+from concurrent.futures import ThreadPoolExecutor
 
 # === ТОКЕНЫ И КОНФИГУРАЦИЯ ===
 TOKEN = '8338675458:AAG2jYEwJjcmWZAcwSpF1QJWPsqV-h2MnKY'
@@ -1394,58 +1395,83 @@ def process_custom_topup(message):
 def check_pending_payments():
     """Проверка статуса ожидающих платежей"""
     try:
+        pending = []
         for payment_id, payment_data in payments_db.items():
             if payment_data.get('status') == 'pending' and payment_data.get('method') == 'yookassa_smart':
-                try:
-                    # Получаем информацию о платеже из ЮKassa
-                    payment = Payment.find_one(payment_id)
+                pending.append((payment_id, payment_data))
+
+        if not pending:
+            return
+
+        def check_one(item):
+            pid, pdata = item
+            try:
+                return pid, pdata, Payment.find_one(pid)
+            except Exception as e:
+                print(f"Ошибка получения платежа {pid}: {e}")
+                return pid, pdata, None
+
+        users_updated = False
+        payments_updated = False
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            results = executor.map(check_one, pending)
+
+            for pid, pdata, payment in results:
+                if not payment:
+                    continue
+
+                if payment.status == 'succeeded':
+                    user_id = pdata['user_id']
+                    amount = pdata['amount']
                     
-                    if payment.status == 'succeeded':
-                        # Платеж успешен - пополняем баланс
-                        user_id = payment_data['user_id']
-                        amount = payment_data['amount']
-                        
-                        # Обновляем баланс
-                        current_balance = users_db.get(user_id, {}).get('balance', 0)
+                    if user_id in users_db:
+                        current_balance = users_db[user_id].get('balance', 0)
                         users_db[user_id]['balance'] = current_balance + amount
-                        save_data('users.json', users_db)
-                        
-                        # Обновляем статус платежа
-                        payments_db[payment_id]['status'] = 'confirmed'
-                        save_data('payments.json', payments_db)
-                        
-                        # Уведомляем пользователя
+                        users_updated = True
+
+                    payments_db[pid]['status'] = 'confirmed'
+                    payments_updated = True
+
+                    try:
                         bot.send_message(
                             user_id,
                             f"✅ **Баланс успешно пополнен!**\n\n"
                             f"💰 Пополнено: {amount} ₽\n"
-                            f"💳 Новый баланс: {users_db[user_id]['balance']} ₽\n\n"
+                            f"💳 Новый баланс: {users_db.get(user_id, {}).get('balance', amount)} ₽\n\n"
                             f"Теперь вы можете купить подписку!",
                             parse_mode='Markdown',
                             reply_markup=main_menu_keyboard(user_id)
                         )
+                    except Exception as e:
+                        print(f"Ошибка уведомления пользователя {user_id}: {e}")
 
-                        # Уведомляем админа
+                    try:
                         bot.send_message(
                             ADMIN_ID,
                             f"✅ Пополнение баланса через ЮKassa:\n"
-                            f"Пользователь: @{users_db[user_id].get('username', 'N/A')} (ID: {user_id})\n"
+                            f"Пользователь: @{users_db.get(user_id, {}).get('username', 'N/A')} (ID: {user_id})\n"
                             f"Сумма: {amount} ₽"
                         )
+                    except Exception as e:
+                        print(f"Ошибка уведомления админа: {e}")
                         
-                    elif payment.status == 'canceled':
-                        # Платеж отменен
-                        payments_db[payment_id]['status'] = 'canceled'
-                        save_data('payments.json', payments_db)
-                        
+                elif payment.status == 'canceled':
+                    payments_db[pid]['status'] = 'canceled'
+                    payments_updated = True
+                    try:
                         bot.send_message(
-                            payment_data['user_id'],
+                            pdata['user_id'],
                             f"❌ Платеж отменен. Баланс не пополнен.",
-                            reply_markup=main_menu_keyboard(payment_data['user_id'])
+                            reply_markup=main_menu_keyboard(pdata['user_id'])
                         )
-                        
-                except Exception as e:
-                    print(f"Ошибка проверки платежа {payment_id}: {e}")
+                    except Exception as e:
+                        print(f"Ошибка уведомления об отмене пользователя {pdata['user_id']}: {e}")
+
+        if users_updated:
+            save_data('users.json', users_db)
+        if payments_updated:
+            save_data('payments.json', payments_db)
                     
     except Exception as e:
         print(f"Ошибка проверки платежей: {e}")
