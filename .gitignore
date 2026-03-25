@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# DB and JSON
+*.sqlite3
+*.db
+users.json
+configs.json
+payments.json
+test_configs.txt
+
+# Node
+node_modules/
+
+# Logs
+*.log
